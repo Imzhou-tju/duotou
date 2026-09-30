@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2B6CFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -16,7 +16,7 @@
 <body>
 
 <!-- 登录 -->
-<div id="view-auth" class="view auth-wrap hidden">
+<div id="view-auth" class="auth-wrap hidden">
   <div class="auth-card">
     <div class="logo">多投</div>
     <div class="sub">秋招投递记录 · 云端同步</div>
@@ -31,39 +31,32 @@
 
 <!-- 主应用 -->
 <div id="app-root" class="hidden">
-  <header>
+  <header class="topbar">
     <div class="brand">多投</div>
     <div class="spacer"></div>
     <span id="user-email" class="user-email"></span>
-    <button id="btn-signout" class="link-btn">退出</button>
   </header>
 
-  <nav>
-    <button class="nav-btn on" data-nav="home">首页</button>
-    <button class="nav-btn" data-nav="list">投递</button>
-    <button class="nav-btn" data-nav="search">搜索</button>
-    <button class="nav-btn add" data-nav="edit">＋ 添加</button>
-  </nav>
-
   <main>
-    <!-- 首页 -->
-    <section id="view-home" class="view">
+    <!-- 投递动态（合并首页 + 列表） -->
+    <section id="view-feed" class="view">
       <div class="hero">
-        <div class="hero-top"><span id="stat-total" class="hero-num">0</span><span class="hero-label">累计投递</span></div>
         <div class="hero-stats">
           <div class="hs"><span id="stat-active" class="hs-num">0</span><span class="hs-label">进行中</span></div>
           <div class="hs"><span id="stat-offer" class="hs-num">0</span><span class="hs-label">Offer</span></div>
-          <div class="hs"><span id="stat-reject" class="hs-num">0</span><span class="hs-label">拒绝</span></div>
+          <div class="hs"><span id="stat-reject" class="hs-num">0</span><span class="hs-label">未过</span></div>
+          <div class="hs"><span id="stat-total" class="hs-num">0</span><span class="hs-label">总计</span></div>
         </div>
       </div>
-      <div class="sec-title">最近更新</div>
-      <div id="home-list" class="list"></div>
-    </section>
 
-    <!-- 投递列表 -->
-    <section id="view-list" class="view hidden">
-      <div id="list-count" class="count"></div>
-      <div id="list-box" class="list"></div>
+      <div id="feed-filters" class="chips filter">
+        <span class="chip on" data-filter="all">全部</span>
+        <span class="chip" data-filter="active">进行中</span>
+        <span class="chip" data-filter="Offer">Offer</span>
+        <span class="chip" data-filter="reject">未过</span>
+      </div>
+
+      <div id="feed-list" class="list"></div>
     </section>
 
     <!-- 搜索 -->
@@ -72,45 +65,79 @@
       <div class="card">
         <div class="f-row"><span class="f-label">阶段</span><div id="search-stages" class="chips"></div></div>
         <div class="f-row"><span class="f-label">Base</span><input id="search-base" class="f-input" placeholder="如 北京"></div>
-        <div class="f-row"><span class="f-label">排序</span>
-          <div class="sort-toggle">
-            <button class="sort-opt on" data-sort="update_desc">最近更新</button>
-            <button class="sort-opt" data-sort="apply_desc">投递日期 ↓</button>
-            <button class="sort-opt" data-sort="apply_asc">投递日期 ↑</button>
-          </div>
-        </div>
       </div>
       <div id="search-count" class="count"></div>
       <div id="search-list" class="list"></div>
     </section>
 
-    <!-- 添加 / 编辑 -->
-    <section id="view-edit" class="view hidden">
-      <div class="sec-title" id="edit-title">添加投递</div>
+    <!-- 我 -->
+    <section id="view-account" class="view hidden">
+      <div class="card account-card">
+        <div class="avatar" id="account-avatar">周</div>
+        <div>
+          <div class="acc-email" id="account-email"></div>
+          <div class="acc-sub">已开启云端同步</div>
+        </div>
+      </div>
+      <div class="menu">
+        <button class="menu-item" id="btn-export">导出 CSV 备份<span class="mi-arrow">›</span></button>
+        <button class="menu-item danger" id="btn-signout">退出登录<span class="mi-arrow">›</span></button>
+      </div>
+      <div class="acc-foot">数据仅本人可见 · Free Plan 不自动备份，建议定期导出</div>
+    </section>
+  </main>
+
+  <!-- 底部标签栏 -->
+  <nav class="tabbar">
+    <button class="tab on" data-nav="feed">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 11.5 12 4l8 7.5M6 10v9h12v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tab" data-nav="search">
+      <svg viewBox="0 0 24 24" class="ico"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>搜索</span>
+    </button>
+    <button class="tab" data-nav="account">
+      <svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="8.5" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>我</span>
+    </button>
+  </nav>
+
+  <!-- 悬浮添加按钮 -->
+  <button id="fab" class="fab" aria-label="添加投递">+</button>
+
+  <!-- 详情底部弹层 -->
+  <div id="sheet" class="sheet hidden">
+    <div class="sheet-backdrop" data-close="1"></div>
+    <div class="sheet-panel">
+      <div class="sheet-grip"></div>
+      <div id="sheet-body"></div>
+    </div>
+  </div>
+
+  <!-- 添加 / 编辑（全屏覆盖层） -->
+  <section id="view-edit" class="view edit-overlay hidden">
+    <div class="edit-head">
+      <button id="btn-cancel" class="link-btn">取消</button>
+      <div id="edit-title" class="edit-title">添加投递</div>
+      <button id="btn-save" class="link-btn primary">保存</button>
+    </div>
+    <div class="edit-scroll">
       <div class="card">
         <div class="form-row"><span class="f-label req">单位名称</span><input id="f-company" placeholder="如 字节跳动"></div>
         <div class="form-row"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 北京"></div>
         <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
         <div class="form-row"><span class="f-label">岗位名称</span><input id="f-position" placeholder="如 后端开发"></div>
-        <div class="f-row"><span class="f-label">投递链接</span><input id="f-link" class="f-input" placeholder="选填"></div>
-        <div class="f-row col"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填"></textarea></div>
+        <div class="form-row"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
+        <div class="form-row col"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填"></textarea></div>
       </div>
       <div class="sec-title">当前阶段</div>
       <div class="card"><div id="edit-stages" class="chips"></div></div>
-      <div class="sec-title">各阶段日期 <span class="tip-inline">支持输入：今天 / 昨天 / 3天前 / 9月28日 / 2026-09-28</span></div>
+      <div class="sec-title">各阶段日期 <span class="tip-inline">今天 / 昨天 / 3天前 / 9月28日 / 2026-09-28</span></div>
       <div class="card"><div id="edit-dates"></div></div>
-      <div class="actions">
-        <button id="btn-cancel" class="btn ghost">取消</button>
-        <button id="btn-save" class="btn primary">保存</button>
-        <button id="btn-delete" class="btn danger hidden">删除</button>
-      </div>
-    </section>
-
-    <!-- 详情 -->
-    <section id="view-detail" class="view hidden">
-      <div id="detail-box"></div>
-    </section>
-  </main>
+      <button id="btn-delete" class="btn danger block hidden">删除这条记录</button>
+    </div>
+  </section>
 </div>
 
 <div id="toast" class="toast hidden"></div>

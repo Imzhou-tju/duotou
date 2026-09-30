@@ -1,4 +1,4 @@
-/* 多投 · 秋招投递记录 — GitHub Pages + Supabase */
+/* 多投 · 秋招投递记录 — GitHub Pages + Supabase（北洋蓝 · Pipeline-First 极简） */
 'use strict';
 
 // ---------- 常量 ----------
@@ -14,11 +14,13 @@ const COLORS = {
 let sb = null;
 let user = null;
 let records = [];
-let editingId = null;          // null = 新增
+let editingId = null;
 let draftStage = '投递';
-let draftDates = {};           // stage -> 'YYYY-MM-DD'
-let searchState = { kw: '', stage: '全部', base: '', sort: 'update_desc' };
-let currentView = 'home';
+let draftDates = {};
+let feedFilter = 'all';
+let searchState = { kw: '', stage: '全部', base: '' };
+let currentView = 'feed';
+let sheetId = null;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -29,13 +31,12 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
-
 function pad(n) { return String(n).padStart(2, '0'); }
 function isoOf(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function todayStr() { return isoOf(new Date()); }
 function shiftDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return isoOf(d); }
 
-// 自然语言日期解析：今天/昨天/前天/明天/大后天/N天前/N天后/2026年9月28日/2026-9-28/9月28日/9/28
+// 自然语言日期解析
 function parseDate(text) {
   if (!text) return null;
   const t = text.trim();
@@ -54,7 +55,6 @@ function parseDate(text) {
   if (m) { const d = new Date(new Date().getFullYear(), +m[1] - 1, +m[2]); return isNaN(d) ? null : isoOf(d); }
   return null;
 }
-
 function formatDateCN(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
@@ -62,7 +62,6 @@ function formatDateCN(iso) {
   const now = new Date();
   return y === now.getFullYear() ? `${m}月${d}日` : `${y}年${m}月${d}日`;
 }
-
 function relTime(ts) {
   if (!ts) return '';
   const diff = Date.now() - new Date(ts).getTime();
@@ -91,14 +90,14 @@ function showView(name) {
   $$('.view').forEach(v => v.classList.add('hidden'));
   $('#view-auth').classList.add('hidden');
   $('#app-root').classList.remove('hidden');
-  const map = { home: '#view-home', list: '#view-list', search: '#view-search', edit: '#view-edit', detail: '#view-detail' };
-  $(map[name]).classList.remove('hidden');
-  $$('.nav-btn').forEach(b => b.classList.toggle('on', b.dataset.nav === name || (name === 'detail' && b.dataset.nav === 'list')));
-  if (name === 'home') renderHome();
-  if (name === 'list') renderList();
+  closeSheet();
+  const map = { feed: '#view-feed', search: '#view-search', account: '#view-account', edit: '#view-edit' };
+  if (map[name]) $(map[name]).classList.remove('hidden');
+  $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.nav === name));
+  if (name === 'feed') renderFeed();
   if (name === 'search') renderSearch();
+  if (name === 'account') renderAccount();
   if (name === 'edit') renderEdit();
-  if (name === 'detail') renderDetail();
 }
 
 // ---------- 认证 ----------
@@ -127,7 +126,7 @@ async function enterApp() {
   $('#app-root').classList.remove('hidden');
   $('#user-email').textContent = user.email || '';
   await loadRecords();
-  showView('home');
+  showView('feed');
 }
 
 async function loadRecords() {
@@ -137,60 +136,58 @@ async function loadRecords() {
   records = data || [];
 }
 
-// ---------- 装饰 ----------
-function progressCount(rec) {
-  return STAGES.filter(s => rec.stage_dates && rec.stage_dates[s]).length;
+// ---------- 阶段流水线（记忆点） ----------
+function pipelineHTML(rec) {
+  const idx = STAGES.indexOf(rec.stage);
+  const done = idx >= 0 ? idx + 1 : 0;
+  const fill = done > 0 ? ((done - 1) / (STAGES.length - 1) * 100) : 0;
+  const dots = STAGES.map((_, i) => `<span class="pl-dot ${i < done ? 'done' : ''}"></span>`).join('');
+  return `<div class="pipeline"><div class="pl-fill" style="width:${fill}%"></div>${dots}</div>`;
+}
+function canAdvance(rec) {
+  const i = STAGES.indexOf(rec.stage);
+  return i >= 0 && i < STAGES.length - 1;
 }
 
-function timelineHTML(rec) {
-  const idx = ALL_STAGES.indexOf(rec.stage);
-  return `<div class="timeline">` + STAGES.map((s, i) => {
-    const done = rec.stage_dates && rec.stage_dates[s];
-    const current = ALL_STAGES.indexOf(rec.stage) === i;
-    const terminalIdx = idx >= STAGES.length;
-    const cls = done ? 'done' : (current && !terminalIdx ? 'done current' : '');
-    return `<div class="tdot-wrap"><div class="tdot ${cls}"></div><div class="tlabel ${current ? 'on' : ''}">${s}</div></div>`;
-  }).join('') + `</div>`;
-}
-
+// ---------- 投递卡片 ----------
 function recCardHTML(rec) {
   const color = COLORS[rec.stage] || '#9AA0A6';
   const bits = [rec.position, rec.base].filter(Boolean).map(esc).join(' · ');
-  const applyText = rec.apply_date ? `投递 ${formatDateCN(rec.apply_date)}` : '';
   return `<div class="rec" data-id="${rec.id}">
-    <div class="rec-head">
-      <div style="flex:1;min-width:0">
-        <div class="rec-title">${esc(rec.company)}</div>
-        ${bits ? `<div class="rec-sub">${bits}</div>` : ''}
-      </div>
+    <div class="rec-top">
+      <div class="rec-title">${esc(rec.company)}</div>
       <span class="pill" style="background:${color}">${esc(rec.stage)}</span>
     </div>
-    ${timelineHTML(rec)}
-    <div class="rec-meta">${esc(applyText)}${applyText ? ' · ' : ''}更新于 ${relTime(rec.update_time)}</div>
+    ${bits ? `<div class="rec-sub">${bits}</div>` : ''}
+    ${pipelineHTML(rec)}
+    <div class="rec-foot">
+      <span class="rec-meta">更新于 ${relTime(rec.update_time)}</span>
+      ${canAdvance(rec) ? `<button class="advance" data-advance="${rec.id}">推进 ▸</button>` : ''}
+    </div>
   </div>`;
 }
 
-// ---------- 首页 ----------
-function renderHome() {
-  const total = records.length;
+// ---------- 投递动态（首页 feed） ----------
+function feedFiltered() {
+  if (feedFilter === 'all') return records;
+  if (feedFilter === 'active') return records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
+  if (feedFilter === 'Offer') return records.filter(r => r.stage === 'Offer');
+  if (feedFilter === 'reject') return records.filter(r => TERMINAL.includes(r.stage));
+  return records;
+}
+function renderFeed() {
+  const active = records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer').length;
   const offers = records.filter(r => r.stage === 'Offer').length;
   const rejects = records.filter(r => TERMINAL.includes(r.stage)).length;
-  $('#stat-total').textContent = total;
-  $('#stat-active').textContent = total - offers - rejects;
+  $('#stat-active').textContent = active;
   $('#stat-offer').textContent = offers;
   $('#stat-reject').textContent = rejects;
-  const recent = records.slice(0, 5);
-  $('#home-list').innerHTML = recent.length
-    ? recent.map(recCardHTML).join('')
-    : `<div class="empty">还没有投递记录，点上方「＋ 添加」开始</div>`;
-}
-
-// ---------- 投递列表 ----------
-function renderList() {
-  $('#list-count').textContent = `共 ${records.length} 条`;
-  $('#list-box').innerHTML = records.length
-    ? records.map(recCardHTML).join('')
-    : `<div class="empty">暂无记录</div>`;
+  $('#stat-total').textContent = records.length;
+  $$('#feed-filters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === feedFilter));
+  const list = feedFiltered();
+  $('#feed-list').innerHTML = list.length
+    ? list.map(recCardHTML).join('')
+    : `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
 }
 
 // ---------- 搜索 ----------
@@ -201,20 +198,13 @@ function filteredRecords() {
     if (searchState.stage !== '全部' && r.stage !== searchState.stage) return false;
     if (base && !(r.base || '').toLowerCase().includes(base)) return false;
     if (kw) {
-      const hay = [r.company, r.sub_unit, r.position, r.remark, r.base]
-        .map(x => (x || '').toLowerCase()).join(' ');
+      const hay = [r.company, r.sub_unit, r.position, r.remark, r.base].map(x => (x || '').toLowerCase()).join(' ');
       if (!hay.includes(kw)) return false;
     }
     return true;
   });
-  if (searchState.sort === 'apply_desc') {
-    list = [...list].sort((a, b) => (b.apply_date || '').localeCompare(a.apply_date || ''));
-  } else if (searchState.sort === 'apply_asc') {
-    list = [...list].sort((a, b) => (a.apply_date || '9').localeCompare(b.apply_date || '9'));
-  }
   return list;
 }
-
 function renderSearch() {
   const stageChips = ['全部', ...ALL_STAGES].map(s =>
     `<span class="chip ${searchState.stage === s ? 'on' : ''}" data-stage="${s}">${s}</span>`).join('');
@@ -243,19 +233,16 @@ function renderEdit() {
     `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
   renderDateRows();
 }
-
 function renderDateRows() {
   $('#edit-dates').innerHTML = ALL_STAGES.map(s => `
     <div class="date-row">
       <div class="date-name"><span class="date-dot" style="background:${COLORS[s]}"></span>${s}</div>
-      <input class="date-input" data-ds="${s}" placeholder="今天 / 3天前 / 9月28日"
-             value="${draftDates[s] ? esc(draftDates[s]) : ''}">
+      <input class="date-input" data-ds="${s}" placeholder="今天 / 3天前 / 9月28日" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
       <input type="date" class="date-picker" data-dp="${s}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
       <button class="date-act" data-today="${s}">今日</button>
       <button class="date-act clear" data-clear="${s}">清除</button>
     </div>`).join('');
 }
-
 function collectForm() {
   const stage_dates = {};
   for (const s of ALL_STAGES) {
@@ -275,7 +262,6 @@ function collectForm() {
     update_time: new Date().toISOString(),
   };
 }
-
 async function saveRecord() {
   const payload = collectForm();
   if (!payload.company) { toast('单位名称必填'); $('#f-company').focus(); return; }
@@ -289,68 +275,105 @@ async function saveRecord() {
   toast('已保存');
   editingId = null;
   await loadRecords();
-  showView('list');
+  showView('feed');
 }
-
-async function deleteRecord() {
-  if (!editingId) return;
+async function deleteRecord(id) {
+  id = id || editingId;
+  if (!id) return;
   if (!confirm('确定删除这条投递记录？')) return;
-  const { error } = await sb.from('applications').delete().eq('id', editingId);
+  const { error } = await sb.from('applications').delete().eq('id', id);
   if (error) { toast('删除失败：' + error.message); return; }
   toast('已删除');
   editingId = null;
+  closeSheet();
   await loadRecords();
-  showView('list');
+  showView('feed');
 }
 
-// ---------- 详情 ----------
-let detailId = null;
-function renderDetail() {
-  const rec = records.find(r => r.id === detailId);
-  if (!rec) { showView('list'); return; }
-  const rows = [
-    ['二级单位', rec.sub_unit], ['Base 地', rec.base], ['岗位名称', rec.position],
-  ].filter(([, v]) => v);
-  const linkRow = rec.link
-    ? `<div class="h-row"><div class="h-k">投递链接</div><div class="h-v"><a href="${esc(rec.link)}" target="_blank" rel="noopener">${esc(rec.link)}</a></div></div>` : '';
-  const remarkRow = rec.remark
-    ? `<div class="h-row"><div class="h-k">备注</div><div class="h-v">${esc(rec.remark)}</div></div>` : '';
-  $('#detail-box').innerHTML = `
-    <div class="card">
-      <div class="h-company">${esc(rec.company)}</div>
-      <div class="h-sub">${esc(rec.position || '')}${rec.position && rec.base ? ' · ' : ''}${esc(rec.base || '')}</div>
-      <div class="h-rows">
-        ${rows.map(([k, v]) => `<div class="h-row"><div class="h-k">${k}</div><div class="h-v">${esc(v)}</div></div>`).join('')}
-        ${linkRow}${remarkRow}
-      </div>
-    </div>
-    <div class="sec-title">当前阶段（点选切换）</div>
-    <div class="card"><div id="detail-stages" class="chips">
-      ${ALL_STAGES.map(s => `<span class="chip ${rec.stage === s ? 'on' : ''}" data-dstage="${s}" style="${rec.stage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('')}
-    </div></div>
-    <div class="sec-title">各阶段日期</div>
-    <div class="card">
-      ${ALL_STAGES.map(s => `
-        <div class="tl-row">
-          <span class="tl-dot" style="background:${COLORS[s]}"></span>
-          <span class="tl-name">${s}</span>
-          <span class="tl-date ${rec.stage_dates && rec.stage_dates[s] ? '' : 'placeholder'}">${rec.stage_dates && rec.stage_dates[s] ? formatDateCN(rec.stage_dates[s]) : '未记录'}</span>
-          <button class="date-act" data-dtoday="${s}">今天</button>
-          ${rec.stage_dates && rec.stage_dates[s] ? `<button class="date-act clear" data-dclear="${s}">清除</button>` : ''}
-        </div>`).join('')}
-    </div>
-    <div class="actions">
-      <button class="btn ghost" data-act="edit">编辑全部</button>
-      <button class="btn danger" data-act="del">删除</button>
+// ---------- 一键推进阶段 ----------
+async function advanceStage(id) {
+  const rec = records.find(r => r.id === id); if (!rec) return;
+  const idx = STAGES.indexOf(rec.stage);
+  if (idx < 0 || idx >= STAGES.length - 1) return;
+  const next = STAGES[idx + 1];
+  const dates = { ...(rec.stage_dates || {}) };
+  if (!dates[next]) dates[next] = todayStr();
+  const patch = {
+    stage: next,
+    stage_dates: dates,
+    apply_date: dates['投递'] || null,
+    update_time: new Date().toISOString(),
+  };
+  const { error } = await sb.from('applications').update(patch).eq('id', id);
+  if (error) { toast('更新失败：' + error.message); return; }
+  toast('已推进到 ' + next);
+  await loadRecords();
+  renderFeed();
+  if (sheetId === id) renderSheet(id);
+}
+
+// ---------- 详情底部弹层 ----------
+function openSheet(id) {
+  sheetId = id;
+  renderSheet(id);
+  $('#sheet').classList.remove('hidden');
+}
+function closeSheet() {
+  sheetId = null;
+  $('#sheet').classList.add('hidden');
+}
+function renderSheet(id) {
+  const rec = records.find(r => r.id === id); if (!rec) return;
+  const color = COLORS[rec.stage] || '#9AA0A6';
+  const bits = [rec.position, rec.base].filter(Boolean).map(esc).join(' · ');
+  const stages = ALL_STAGES.map(s =>
+    `<span class="chip ${rec.stage === s ? 'on' : ''}" data-dstage="${s}" style="${rec.stage === s ? 'background:' + color : ''}">${s}</span>`).join('');
+  const dates = ALL_STAGES.map(s => {
+    const v = rec.stage_dates && rec.stage_dates[s];
+    return `<div class="sheet-date-row"><div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
+      <div class="sd-val ${v ? '' : 'placeholder'}">${v ? formatDateCN(v) : '未记录'}</div></div>`;
+  }).join('');
+  const adv = canAdvance(rec) ? `<button class="btn-advance" data-advance="${rec.id}">推进到 ${STAGES[STAGES.indexOf(rec.stage) + 1]} ▸</button>` : '';
+  $('#sheet-body').innerHTML = `
+    <div class="sheet-company">${esc(rec.company)}</div>
+    <div class="sheet-sub">${bits || ''}</div>
+    <div class="sheet-stages">${stages}</div>
+    <div class="sheet-dates">${dates}</div>
+    ${adv}
+    <div class="sheet-actions">
+      <button class="btn ghost" data-edit="${rec.id}">编辑全部</button>
+      <button class="btn danger" data-del="${rec.id}">删除</button>
     </div>`;
 }
-
-async function patchRecord(id, patch) {
-  patch.update_time = new Date().toISOString();
-  const { data, error } = await sb.from('applications').update(patch).eq('id', id).select().single();
+async function patchStage(id, stage) {
+  const rec = records.find(r => r.id === id); if (!rec) return;
+  const patch = { stage, update_time: new Date().toISOString() };
+  if (!(rec.stage_dates || {})[stage]) {
+    patch.stage_dates = { ...(rec.stage_dates || {}), [stage]: todayStr() };
+  }
+  const { error } = await sb.from('applications').update(patch).eq('id', id);
   if (error) { toast('更新失败：' + error.message); return; }
-  const i = records.findIndex(r => r.id === id);
-  if (i >= 0) records[i] = data;
+  await loadRecords();
+  renderFeed();
+  renderSheet(id);
+}
+
+// ---------- 账户 ----------
+function renderAccount() {
+  $('#account-email').textContent = user.email || '';
+  $('#account-avatar').textContent = (user.email || '我')[0].toUpperCase();
+}
+function exportCSV() {
+  const headers = ['单位', '二级单位', 'Base', '岗位', '阶段', '投递日期', '链接', '备注'];
+  const rows = records.map(r => [r.company, r.sub_unit, r.base, r.position, r.stage, r.apply_date || '', r.link || '', r.remark || '']);
+  const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  const csv = [headers, ...rows].map(row => row.map(q).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `多投投递记录_${todayStr()}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast('已导出 CSV 到本地');
 }
 
 // ---------- 事件绑定 ----------
@@ -358,9 +381,7 @@ function bindEvents() {
   // 登录 / 注册
   $('#btn-signin').addEventListener('click', async () => {
     $('#auth-error').textContent = '';
-    const { error } = await sb.auth.signInWithPassword({
-      email: $('#auth-email').value.trim(), password: $('#auth-pass').value,
-    });
+    const { error } = await sb.auth.signInWithPassword({ email: $('#auth-email').value.trim(), password: $('#auth-pass').value });
     if (error) { $('#auth-error').textContent = error.message; return; }
     const { data } = await sb.auth.getSession();
     user = data.session.user;
@@ -368,20 +389,32 @@ function bindEvents() {
   });
   $('#btn-signup').addEventListener('click', async () => {
     $('#auth-error').textContent = '';
-    const { data, error } = await sb.auth.signUp({
-      email: $('#auth-email').value.trim(), password: $('#auth-pass').value,
-    });
+    const { data, error } = await sb.auth.signUp({ email: $('#auth-email').value.trim(), password: $('#auth-pass').value });
     if (error) { $('#auth-error').textContent = error.message; return; }
     if (data.session) { user = data.session.user; await enterApp(); }
-    else $('#auth-error').textContent = '注册成功，请到 Supabase 关闭邮箱确认后直接登录（或在邮箱里点确认链接）';
+    else $('#auth-error').textContent = '注册成功，请到 Supabase 关闭邮箱确认后直接登录';
   });
-  $('#btn-signout').addEventListener('click', () => sb.auth.signOut());
 
-  // 导航
-  $$('.nav-btn').forEach(b => b.addEventListener('click', () => {
-    if (b.dataset.nav === 'edit') { editingId = null; }
-    showView(b.dataset.nav);
-  }));
+  // 底部标签栏
+  $$('.tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
+  // 悬浮添加
+  $('#fab').addEventListener('click', () => { editingId = null; showView('edit'); });
+
+  // feed 筛选
+  $('#feed-filters').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-filter]'); if (!t) return;
+    feedFilter = t.dataset.filter; renderFeed();
+  });
+
+  // 列表卡片：点击打开详情，点推进直接推进（feed + search 共用）
+  ['feed-list', 'search-list'].forEach(id => {
+    $('#' + id).addEventListener('click', (e) => {
+      const adv = e.target.closest('[data-advance]');
+      if (adv) { advanceStage(Number(adv.dataset.advance)); return; }
+      const card = e.target.closest('.rec'); if (!card) return;
+      openSheet(Number(card.dataset.id));
+    });
+  });
 
   // 搜索
   $('#search-kw').addEventListener('input', (e) => { searchState.kw = e.target.value; renderSearch(); });
@@ -390,37 +423,28 @@ function bindEvents() {
     const t = e.target.closest('[data-stage]'); if (!t) return;
     searchState.stage = t.dataset.stage; renderSearch();
   });
-  $$('.sort-opt').forEach(b => b.addEventListener('click', () => {
-    searchState.sort = b.dataset.sort;
-    $$('.sort-opt').forEach(x => x.classList.toggle('on', x === b));
-    renderSearch();
-  }));
 
-  // 卡片点击 → 详情
-  ['home-list', 'list-box', 'search-list'].forEach(id => {
-    $('#' + id).addEventListener('click', (e) => {
-      const card = e.target.closest('.rec'); if (!card) return;
-      detailId = Number(card.dataset.id);
-      showView('detail');
-    });
+  // 详情弹层
+  $('#sheet').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { closeSheet(); return; }
+    const ds = e.target.closest('[data-dstage]');
+    if (ds) { patchStage(sheetId, ds.dataset.dstage); return; }
+    const adv = e.target.closest('[data-advance]');
+    if (adv) { advanceStage(Number(adv.dataset.advance)); return; }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) { closeSheet(); editingId = Number(ed.dataset.edit); showView('edit'); return; }
+    const dl = e.target.closest('[data-del]');
+    if (dl) { deleteRecord(Number(dl.dataset.del)); }
   });
 
-  // 编辑页 chips
+  // 编辑页
   $('#edit-stages').addEventListener('click', (e) => {
     const t = e.target.closest('[data-stage]'); if (!t) return;
-    draftStage = t.dataset.stage;
-    renderEditStagesOnly();
+    draftStage = t.dataset.stage; renderEditStagesOnly();
   });
-  // 编辑页日期输入（自然语言）
   $('#edit-dates').addEventListener('change', (e) => {
     const ds = e.target.closest('[data-ds]');
-    if (ds) {
-      const s = ds.dataset.ds;
-      const parsed = ds.value.trim() ? (parseDate(ds.value) || ds.value.trim()) : '';
-      draftDates[s] = parsed;
-      renderDateRows();
-      return;
-    }
+    if (ds) { draftDates[ds.dataset.ds] = ds.value.trim() ? (parseDate(ds.value) || ds.value.trim()) : ''; renderDateRows(); return; }
     const dp = e.target.closest('[data-dp]');
     if (dp) { draftDates[dp.dataset.dp] = dp.value || ''; renderDateRows(); }
   });
@@ -430,47 +454,16 @@ function bindEvents() {
     const cl = e.target.closest('[data-clear]');
     if (cl) { delete draftDates[cl.dataset.clear]; renderDateRows(); }
   });
-
-  // 保存 / 取消 / 删除
   $('#btn-save').addEventListener('click', saveRecord);
-  $('#btn-cancel').addEventListener('click', () => { editingId = null; showView('list'); });
-  $('#btn-delete').addEventListener('click', deleteRecord);
+  $('#btn-cancel').addEventListener('click', () => { editingId = null; showView('feed'); });
+  $('#btn-delete').addEventListener('click', () => deleteRecord());
 
-  // 详情页事件
-  $('#detail-box').addEventListener('click', async (e) => {
-    const rec = records.find(r => r.id === detailId);
-    if (!rec) return;
-    const ds = e.target.closest('[data-dstage]');
-    if (ds) {
-      const patch = { stage: ds.dataset.dstage };
-      // 首次切到某阶段且无日期时，自动记录今天
-      if (!(rec.stage_dates || {})[ds.dataset.dstage]) {
-        patch.stage_dates = { ...(rec.stage_dates || {}), [ds.dataset.dstage]: todayStr() };
-      }
-      await patchRecord(rec.id, patch);
-      renderDetail();
-      return;
-    }
-    const dt = e.target.closest('[data-dtoday]');
-    if (dt) {
-      await patchRecord(rec.id, { stage_dates: { ...(rec.stage_dates || {}), [dt.dataset.dtoday]: todayStr() } });
-      renderDetail(); return;
-    }
-    const dc = e.target.closest('[data-dclear]');
-    if (dc) {
-      const next = { ...(rec.stage_dates || {}) }; delete next[dc.dataset.dclear];
-      await patchRecord(rec.id, { stage_dates: next });
-      renderDetail(); return;
-    }
-    const act = e.target.closest('[data-act]');
-    if (act) {
-      if (act.dataset.act === 'edit') { editingId = rec.id; showView('edit'); }
-      if (act.dataset.act === 'del') { editingId = rec.id; deleteRecord(); }
-    }
-  });
+  // 账户
+  $('#btn-export').addEventListener('click', exportCSV);
+  $('#btn-signout').addEventListener('click', () => sb.auth.signOut());
 }
 
-// 切阶段时只刷新 chips（不重置表单）
+// 切阶段时只刷新 chips
 function renderEditStagesOnly() {
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
     `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
