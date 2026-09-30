@@ -114,13 +114,84 @@ textarea { resize: vertical; }
 .rec-sub { color: var(--text2); font-size: 13px; margin-top: 4px; }
 .pill { flex-shrink: 0; color: #fff; font-size: 12px; padding: 4px 12px; border-radius: 12px; }
 
-/* 阶段流水线：记忆点 */
-.pipeline { position: relative; display: flex; justify-content: space-between; margin: 14px 2px 8px; }
-.pipeline::before { content: ''; position: absolute; top: 5px; left: 6px; right: 6px; height: 3px; background: var(--border); border-radius: 2px; }
-.pipeline .pl-fill { position: absolute; top: 5px; left: 6px; height: 3px; background: var(--brand); border-radius: 2px; }
-.pipeline .pl-dot { width: 13px; height: 13px; border-radius: 50%; background: #fff; border: 2px solid var(--border); position: relative; z-index: 1; }
-.pipeline .pl-dot.done { background: var(--brand); border-color: var(--brand); }
-.pipeline .pl-dot.term { background: var(--danger); border-color: var(--danger); }
+/* 阶段流水线：步骤图与当前流程 */
+.pipeline-wrap { margin: 14px 0 10px; }
+.pipeline {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.pl-line {
+  position: absolute;
+  top: 5px;
+  left: calc(100% / 14);
+  right: calc(100% / 14);
+  height: 2px;
+  background: var(--border);
+  border-radius: 2px;
+  z-index: 0;
+}
+.pl-fill {
+  position: absolute;
+  top: 5px;
+  left: calc(100% / 14);
+  max-width: calc(100% - 100% / 7);
+  height: 2px;
+  border-radius: 2px;
+  z-index: 0;
+  transition: width .25s ease;
+}
+.pl-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.pl-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--border);
+  box-sizing: border-box;
+  transition: all .2s ease;
+}
+.pl-step.done .pl-dot {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.pl-step.current .pl-dot {
+  width: 13px;
+  height: 13px;
+  margin-top: -1px;
+  background: var(--brand);
+  border-color: #fff;
+}
+.pl-text {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 5px;
+  white-space: nowrap;
+  line-height: 1;
+  user-select: none;
+}
+.pl-step.done .pl-text {
+  color: var(--text2);
+}
+.pl-step.current .pl-text {
+  color: var(--brand);
+  font-weight: 700;
+}
+.pl-term-tip {
+  font-size: 12px;
+  margin-top: 6px;
+  text-align: right;
+  font-weight: 600;
+}
 
 .rec-foot { display: flex; align-items: center; margin-top: 4px; }
 .rec-meta { color: var(--text3); font-size: 12px; flex: 1; }

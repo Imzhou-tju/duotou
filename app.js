@@ -139,18 +139,55 @@ async function loadRecords() {
   });
 }
 
-// ---------- 阶段流水线（记忆点） ----------
+// ---------- 阶段流水线（步骤条展示当前所处流程） ----------
 function pipelineHTML(rec) {
-  const idx = STAGES.indexOf(rec.stage);
-  const done = idx >= 0 ? idx + 1 : 0;
-  const fill = done > 0 ? ((done - 1) / (STAGES.length - 1) * 100) : 0;
-  const dots = STAGES.map((_, i) => `<span class="pl-dot ${i < done ? 'done' : ''}"></span>`).join('');
-  return `<div class="pipeline"><div class="pl-fill" style="width:${fill}%"></div>${dots}</div>`;
+  const currentStage = rec.stage || '投递';
+  const isTerminal = TERMINAL.includes(currentStage);
+  const curIdx = STAGES.indexOf(currentStage);
+  const color = COLORS[currentStage] || '#2B6CFF';
+
+  // 连线进度百分比（两端节点中心对齐）
+  let fillPercent = 0;
+  if (curIdx > 0) {
+    fillPercent = (curIdx / (STAGES.length - 1)) * 100;
+  }
+
+  const stepsHTML = STAGES.map((s, i) => {
+    const isPast = curIdx >= 0 && i < curIdx;
+    const isCurrent = s === currentStage;
+    const sColor = COLORS[s] || '#2B6CFF';
+
+    let cls = 'pl-step';
+    if (isPast) cls += ' done';
+    if (isCurrent) cls += ' current';
+
+    const dotStyle = isCurrent
+      ? `background:${sColor}; border-color:${sColor}; box-shadow:0 0 0 3px ${sColor}33;`
+      : (isPast ? `background:${sColor}; border-color:${sColor};` : '');
+    const textStyle = isCurrent ? `color:${sColor}; font-weight:700;` : '';
+
+    return `<div class="${cls}">
+      <span class="pl-dot" style="${dotStyle}"></span>
+      <span class="pl-text" style="${textStyle}">${s}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="pipeline-wrap">
+    <div class="pipeline">
+      <div class="pl-line"></div>
+      <div class="pl-fill" style="width:calc((100% - 100% / 7) * ${curIdx >= 0 ? curIdx / (STAGES.length - 1) : 0}); background:${color};"></div>
+      ${stepsHTML}
+    </div>
+    ${isTerminal ? `<div class="pl-term-tip" style="color:${color}">当前终态 · ${currentStage}</div>` : ''}
+  </div>`;
 }
 // ---------- 投递卡片 ----------
 function recCardHTML(rec) {
   const color = COLORS[rec.stage] || '#9AA0A6';
   const bits = [rec.position, rec.sub_unit, rec.base].filter(Boolean).map(esc).join(' · ');
+  const stageDate = rec.stage_dates && rec.stage_dates[rec.stage];
+  const stageDateText = stageDate ? ` (${stageDate})` : '';
+
   return `<div class="rec" data-id="${rec.id}">
     <div class="rec-top">
       <div class="rec-title">${esc(rec.company)}</div>
@@ -159,7 +196,7 @@ function recCardHTML(rec) {
     ${bits ? `<div class="rec-sub">${bits}</div>` : ''}
     ${pipelineHTML(rec)}
     <div class="rec-foot">
-      <span class="rec-meta">更新于 ${relTime(rec.update_time)}</span>
+      <span class="rec-meta">当前：<strong style="color:${color}">${esc(rec.stage)}</strong>${stageDateText} · 更新于 ${relTime(rec.update_time)}</span>
       ${rec.link ? '<span class="rec-badge">🔗 链接</span>' : ''}
       ${rec.remark ? '<span class="rec-badge">📝 备注</span>' : ''}
     </div>
