@@ -35,6 +35,12 @@ function pad(n) { return String(n).padStart(2, '0'); }
 function isoOf(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function todayStr() { return isoOf(new Date()); }
 function shiftDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return isoOf(d); }
+function formatUrl(url) {
+  if (!url) return '';
+  const u = String(url).trim();
+  if (/^https?:\/\//i.test(u)) return u;
+  return 'https://' + u;
+}
 
 // 自然语言日期解析
 function parseDate(text) {
@@ -140,7 +146,7 @@ function pipelineHTML(rec) {
 // ---------- 投递卡片 ----------
 function recCardHTML(rec) {
   const color = COLORS[rec.stage] || '#9AA0A6';
-  const bits = [rec.position, rec.base].filter(Boolean).map(esc).join(' · ');
+  const bits = [rec.position, rec.sub_unit, rec.base].filter(Boolean).map(esc).join(' · ');
   return `<div class="rec" data-id="${rec.id}">
     <div class="rec-top">
       <div class="rec-title">${esc(rec.company)}</div>
@@ -150,6 +156,8 @@ function recCardHTML(rec) {
     ${pipelineHTML(rec)}
     <div class="rec-foot">
       <span class="rec-meta">更新于 ${relTime(rec.update_time)}</span>
+      ${rec.link ? '<span class="rec-badge">🔗 链接</span>' : ''}
+      ${rec.remark ? '<span class="rec-badge">📝 备注</span>' : ''}
     </div>
   </div>`;
 }
@@ -300,7 +308,38 @@ function closeSheet() {
 function renderSheet(id) {
   const rec = records.find(r => r.id === id); if (!rec) return;
   const color = COLORS[rec.stage] || '#9AA0A6';
-  const bits = [rec.position, rec.base].filter(Boolean).map(esc).join(' · ');
+
+  const tags = [];
+  if (rec.position) tags.push(`<span class="sheet-tag"><span class="sheet-tag-lbl">岗位:</span> ${esc(rec.position)}</span>`);
+  if (rec.sub_unit) tags.push(`<span class="sheet-tag"><span class="sheet-tag-lbl">部门:</span> ${esc(rec.sub_unit)}</span>`);
+  if (rec.base) tags.push(`<span class="sheet-tag"><span class="sheet-tag-lbl">Base:</span> ${esc(rec.base)}</span>`);
+
+  let linkHTML = '';
+  if (rec.link) {
+    const safeUrl = formatUrl(rec.link);
+    linkHTML = `
+      <div class="sheet-field sheet-link-card">
+        <div class="sheet-field-label">投递链接</div>
+        <div class="sheet-link-content">
+          <a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer" class="sheet-link-url" title="${esc(rec.link)}">
+            <svg class="sheet-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <span class="sheet-link-text">${esc(rec.link)}</span>
+            <span class="sheet-link-ext">访问 ↗</span>
+          </a>
+          <button class="sheet-copy-btn" data-copylink="${esc(rec.link)}" type="button">复制</button>
+        </div>
+      </div>`;
+  }
+
+  let remarkHTML = '';
+  if (rec.remark) {
+    remarkHTML = `
+      <div class="sheet-field sheet-remark-card">
+        <div class="sheet-field-label">备注信息</div>
+        <div class="sheet-remark-text">${esc(rec.remark)}</div>
+      </div>`;
+  }
+
   const dates = ALL_STAGES.map(s => {
     const v = rec.stage_dates && rec.stage_dates[s];
     return `<div class="sheet-date-row">
@@ -309,12 +348,16 @@ function renderSheet(id) {
       <button class="date-act" data-sdtoday="${s}">今日</button>
     </div>`;
   }).join('');
+
   $('#sheet-body').innerHTML = `
     <div class="sheet-top">
       <div class="sheet-company">${esc(rec.company)}</div>
       <span class="pill" style="background:${color}">${esc(rec.stage)}</span>
     </div>
-    <div class="sheet-sub">${bits || ''}</div>
+    ${tags.length ? `<div class="sheet-tags">${tags.join('')}</div>` : ''}
+    ${linkHTML}
+    ${remarkHTML}
+    <div class="sheet-sec-title">阶段推进日期</div>
     <div class="sheet-dates">${dates}</div>
     <div class="sheet-actions">
       <button class="btn ghost" data-edit="${rec.id}">编辑全部</button>
@@ -407,6 +450,16 @@ function bindEvents() {
   // 详情弹层
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closeSheet(); return; }
+    const cp = e.target.closest('[data-copylink]');
+    if (cp) {
+      const text = cp.dataset.copylink;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast('链接已复制')).catch(() => toast('复制失败'));
+      } else {
+        toast('请长按复制链接');
+      }
+      return;
+    }
     const dt = e.target.closest('[data-sdtoday]');
     if (dt) { patchSheetDate(sheetId, dt.dataset.sdtoday, todayStr()); return; }
     const ed = e.target.closest('[data-edit]');
