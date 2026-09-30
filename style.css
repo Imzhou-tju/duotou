@@ -161,9 +161,28 @@ textarea { width: 100%; resize: vertical; }
   padding: 10px 20px; border-radius: 20px; z-index: 99; max-width: 80vw;
 }
 
-@media (max-width: 520px) {
+/* 移动端适配：让登录框/表单占满屏宽、字号≥16px（避免 iOS 聚焦时自动放大）、加大点按区域 */
+@media (max-width: 600px) {
+  body { font-size: 16px; }
+  /* 输入框/文本域字号统一 16px，iOS Safari 就不会在聚焦时整体缩放 */
+  input, textarea, select { font-size: 16px; }
+  .btn { font-size: 16px; padding: 13px 20px; }
+
+  /* 登录卡片在手机上占满可用宽度，不再缩在中间 */
+  .auth-wrap { padding: 16px; }
+  .auth-card { max-width: 100%; padding: 34px 22px; }
+  .auth-card .logo { font-size: 30px; }
+  .auth-card input { height: 48px; font-size: 16px; }
+  .auth-card .tip { font-size: 12px; }
+
+  /* 表单行在窄屏改为上下排列，标签在上、输入占满 */
   .form-row { flex-direction: column; align-items: stretch; gap: 4px; }
   .form-row .f-label { width: auto; }
+  .f-row { flex-direction: column; align-items: stretch; gap: 4px; }
+  .f-row .f-label { width: auto; }
+
   nav { padding: 10px 12px 0; }
   main { padding: 12px 12px 60px; }
+  .hero-num { font-size: 34px; }
+  .rec-title { font-size: 16px; }
 }
