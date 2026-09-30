@@ -15,6 +15,7 @@ let sb = null;
 let user = null;
 let records = [];
 let editingId = null;
+let draftGroup = '';
 let draftStage = '投递';
 let draftDates = {};
 let feedFilter = 'all';
@@ -260,7 +261,8 @@ function pipelineHTML(rec) {
 function recCardHTML(rec) {
   const color = COLORS[rec.stage] || '#9AA0A6';
   const normBase = normalizeLocation(rec.base);
-  const bits = [rec.position, rec.sub_unit, normBase].filter(Boolean).map(esc).join(' · ');
+  const groupTag = rec.group_name ? ('📁 ' + rec.group_name) : '';
+  const bits = [groupTag, rec.position, rec.sub_unit, normBase].filter(Boolean).map(esc).join(' · ');
   const stageDate = rec.stage_dates && rec.stage_dates[rec.stage];
   const stageDateText = stageDate ? ` (${stageDate})` : '';
 
@@ -279,14 +281,22 @@ function recCardHTML(rec) {
   </div>`;
 }
 
-// ---------- 投递动态（首页 feed） ----------
-function feedFiltered() {
-  if (feedFilter === 'all') return records;
-  if (feedFilter === 'active') return records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
-  if (feedFilter === 'Offer') return records.filter(r => r.stage === 'Offer');
-  if (feedFilter === 'reject') return records.filter(r => TERMINAL.includes(r.stage));
-  return records;
+// ---------- 集团分组 ----------
+function groupNameOptions() {
+  const set = new Set();
+  for (const r of records) {
+    const g = (r.group_name || '').trim();
+    if (g) set.add(g);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
 }
+// 某个集团下所有子投递的「最新阶段」= 合并所有子投递的日期后取最晚
+function latestStageOfGroup(recs) {
+  const merged = {};
+  for (const r of recs) { if (r.stage_dates) Object.assign(merged, r.stage_dates); }
+  return stageFromDates(merged);
+}
+// 首页：按集团聚合成组卡片；仅 1 条的集团退化为普通卡片
 function renderFeed() {
   const active = records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer').length;
   const offers = records.filter(r => r.stage === 'Offer').length;
@@ -296,10 +306,42 @@ function renderFeed() {
   $('#stat-reject').textContent = rejects;
   $('#stat-total').textContent = records.length;
   $$('#feed-filters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === feedFilter));
+
   const list = feedFiltered();
-  $('#feed-list').innerHTML = list.length
-    ? list.map(recCardHTML).join('')
-    : `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
+  const groups = new Map();   // group_name -> [recs]
+  const singles = [];
+  for (const r of list) {
+    const g = (r.group_name || '').trim();
+    if (g) { if (!groups.has(g)) groups.set(g, []); groups.get(g).push(r); }
+    else singles.push(r);
+  }
+  let html = '';
+  for (const [g, recs] of groups) {
+    if (recs.length >= 2) html += groupCardHTML(g, recs);
+    else singles.push(...recs);
+  }
+  html += singles.map(recCardHTML).join('');
+  $('#feed-list').innerHTML = html || `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
+}
+function groupCardHTML(groupName, recs) {
+  const gstage = latestStageOfGroup(recs) || '投递';
+  const color = COLORS[gstage] || '#2B6CFF';
+  return `<div class="rec group" data-group="${esc(groupName)}">
+    <div class="rec-top">
+      <div class="rec-title">${esc(groupName)}</div>
+      <span class="g-badge">${recs.length} 个投递</span>
+    </div>
+    <div class="g-agg">最新进展：<strong style="color:${color}">${esc(gstage)}</strong> · 共 ${recs.length} 个岗位</div>
+    <div class="rec-foot"><span class="rec-meta">点按查看各投递详情</span><span class="rec-badge">›</span></div>
+  </div>`;
+}
+
+function feedFiltered() {
+  if (feedFilter === 'all') return records;
+  if (feedFilter === 'active') return records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
+  if (feedFilter === 'Offer') return records.filter(r => r.stage === 'Offer');
+  if (feedFilter === 'reject') return records.filter(r => TERMINAL.includes(r.stage));
+  return records;
 }
 
 // ---------- 搜索 ----------
@@ -334,6 +376,9 @@ function renderEdit() {
   const rec = editingId ? records.find(r => r.id === editingId) : null;
   $('#edit-title').textContent = rec ? '编辑投递' : '添加投递';
   $('#btn-delete').classList.toggle('hidden', !rec);
+  // 集团名：编辑时取原值；新增时若从集团弹层「在此集团下新增」进入，则带入该集团名
+  $('#f-group').value = rec ? (rec.group_name || '') : (draftGroup || '');
+  $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
   $('#f-company').value = rec ? rec.company : '';
   $('#f-base').value = rec ? (rec.base || '') : '';
   const hintEl = $('#f-base-hint');
@@ -372,6 +417,7 @@ function collectForm() {
   const normalizedBase = normalizeLocation(rawBase);
   return {
     company: $('#f-company').value.trim(),
+    group_name: $('#f-group').value.trim() || null,
     base: normalizedBase || null,
     sub_unit: $('#f-sub').value.trim() || null,
     position: $('#f-position').value.trim() || null,
@@ -395,6 +441,7 @@ async function saveRecord() {
   if (error) { toast('保存失败：' + error.message); return; }
   toast('已保存');
   editingId = null;
+  draftGroup = '';
   await loadRecords();
   showView('feed');
 }
@@ -429,6 +476,39 @@ function openSheet(id) {
 function closeSheet() {
   sheetId = null;
   $('#sheet').classList.add('hidden');
+}
+// 集团弹层：列出该集团下所有子投递，点任意子投递再进它的详情
+function openGroupSheet(groupName) {
+  const recs = records.filter(r => (r.group_name || '').trim() === groupName);
+  const gstage = latestStageOfGroup(recs) || '投递';
+  const color = COLORS[gstage] || '#2B6CFF';
+  const rows = recs.map(r => {
+    const rc = COLORS[r.stage] || '#9AA0A6';
+    const detail = [r.sub_unit, r.position, normalizeLocation(r.base)].filter(Boolean).map(esc).join(' · ');
+    const latestDate = r.stage_dates && r.stage_dates[r.stage];
+    return `<div class="g-child-row" data-child="${r.id}">
+      <div class="g-child-main">
+        <div class="g-child-name">${esc(r.sub_unit || r.company)}</div>
+        ${detail ? `<div class="g-child-sub">${detail}</div>` : ''}
+      </div>
+      <div class="g-child-right">
+        <span class="pill" style="background:${rc}">${esc(r.stage)}</span>
+        ${latestDate ? `<div class="g-child-date">${esc(latestDate)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  $('#sheet-body').innerHTML = `
+    <div class="sheet-top">
+      <div class="sheet-company">${esc(groupName)}</div>
+      <span class="pill" style="background:${color}">${esc(gstage)}</span>
+    </div>
+    <div class="sheet-sub">${recs.length} 个投递 · 点任意投递查看 / 编辑详情</div>
+    <div class="g-list">${rows}</div>
+    <div class="sheet-actions">
+      <button class="btn primary block" data-addunder="${esc(groupName)}">＋ 在此集团下新增投递</button>
+    </div>`;
+  sheetId = null;
+  $('#sheet').classList.remove('hidden');
 }
 function renderSheet(id) {
   const rec = records.find(r => r.id === id); if (!rec) return;
@@ -515,8 +595,8 @@ function renderAccount() {
   $('#account-avatar').textContent = (user.email || '我')[0].toUpperCase();
 }
 function exportCSV() {
-  const headers = ['单位', '二级单位', 'Base', '岗位', '阶段', '投递日期', '链接', '备注'];
-  const rows = records.map(r => [r.company, r.sub_unit, r.base, r.position, r.stage, r.apply_date || '', r.link || '', r.remark || '']);
+  const headers = ['集团', '单位', '二级单位', 'Base', '岗位', '阶段', '投递日期', '链接', '备注'];
+  const rows = records.map(r => [r.group_name || '', r.company, r.sub_unit, r.base, r.position, r.stage, r.apply_date || '', r.link || '', r.remark || '']);
   const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
   const csv = [headers, ...rows].map(row => row.map(q).join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -549,7 +629,7 @@ function bindEvents() {
   // 底部标签栏
   $$('.tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
   // 悬浮添加
-  $('#fab').addEventListener('click', () => { editingId = null; showView('edit'); });
+  $('#fab').addEventListener('click', () => { editingId = null; draftGroup = ''; showView('edit'); });
 
   // feed 筛选
   $('#feed-filters').addEventListener('click', (e) => {
@@ -557,9 +637,11 @@ function bindEvents() {
     feedFilter = t.dataset.filter; renderFeed();
   });
 
-  // 列表卡片：点击打开详情（feed + search 共用）
+  // 列表卡片：集团卡片展开集团弹层，普通卡片打开详情（feed + search 共用）
   ['feed-list', 'search-list'].forEach(id => {
     $('#' + id).addEventListener('click', (e) => {
+      const groupCard = e.target.closest('.rec.group');
+      if (groupCard) { openGroupSheet(groupCard.dataset.group); return; }
       const card = e.target.closest('.rec'); if (!card) return;
       openSheet(Number(card.dataset.id));
     });
@@ -576,6 +658,10 @@ function bindEvents() {
   // 详情弹层
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closeSheet(); return; }
+    const child = e.target.closest('[data-child]');
+    if (child) { openSheet(Number(child.dataset.child)); return; }
+    const addUnder = e.target.closest('[data-addunder]');
+    if (addUnder) { draftGroup = addUnder.dataset.addunder; editingId = null; closeSheet(); showView('edit'); return; }
     const cp = e.target.closest('[data-copylink]');
     if (cp) {
       const text = cp.dataset.copylink;
@@ -677,7 +763,7 @@ function bindEvents() {
     }
   });
   $('#btn-save').addEventListener('click', saveRecord);
-  $('#btn-cancel').addEventListener('click', () => { editingId = null; showView('feed'); });
+  $('#btn-cancel').addEventListener('click', () => { editingId = null; draftGroup = ''; showView('feed'); });
   $('#btn-delete').addEventListener('click', () => deleteRecord());
 
   // 账户

@@ -198,6 +198,26 @@ textarea { resize: vertical; }
 .rec-meta { color: var(--text3); font-size: 12px; flex: 1; }
 .rec-badge { font-size: 11px; color: var(--text2); background: var(--bg); padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
 
+/* 集团分组卡片 */
+.rec.group { border-left: 3px solid var(--brand); }
+.g-badge { flex-shrink: 0; font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.g-agg { color: var(--text2); font-size: 13px; margin-top: 6px; }
+.rec.group .rec-foot { justify-content: space-between; }
+.rec.group .rec-foot .rec-badge { margin-left: 0; }
+
+/* 集团弹层内：子投递列表 */
+.g-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.g-child-row {
+  display: flex; align-items: center; gap: 10px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
+}
+.g-child-row:active { background: var(--border); }
+.g-child-main { flex: 1; min-width: 0; }
+.g-child-name { font-weight: 600; font-size: 15px; }
+.g-child-sub { color: var(--text2); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-child-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.g-child-date { font-size: 11px; color: var(--text3); }
+
 .empty { text-align: center; color: var(--text3); padding: 60px 0; font-size: 14px; }
 .empty .big { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
 

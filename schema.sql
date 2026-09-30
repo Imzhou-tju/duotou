@@ -6,6 +6,7 @@ create table if not exists public.applications (
   id          bigint generated always as identity primary key,
   owner_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
   company     text not null,
+  group_name  text,                       -- 集团分组（选填）：如「中信银行」聚合多个分行投递
   base        text,
   sub_unit    text,
   position    text,
@@ -36,3 +37,6 @@ create policy "own delete" on public.applications
 
 create index if not exists idx_applications_owner   on public.applications(owner_id);
 create index if not exists idx_applications_update  on public.applications(update_time desc);
+
+-- 已部署的旧表补列（首次新建表时上面 create table 已含该列，此句幂等，可反复执行）：
+alter table public.applications add column if not exists group_name text;
