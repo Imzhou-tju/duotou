@@ -13,6 +13,7 @@
   --radius-lg: 18px;
   --shadow: 0 2px 12px rgba(31,35,41,.05);
   --maxw: 680px;
+  --editw: 760px;
   --tabh: 64px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -233,9 +234,25 @@ textarea { resize: vertical; }
   .rec-title { font-size: 16px; }
 }
 
-/* ---------- 桌面端：内容居中，标签栏/FAB 收在容器内 ---------- */
+/* ---------- 桌面端：内容居中，标签栏/FAB 收在容器内；编辑页收窄 + 表单两列 ---------- */
 @media (min-width: 720px) {
   .fab { bottom: calc(var(--tabh) + 24px); }
   .hero { padding: 28px; }
   .hs-num { font-size: 30px; }
+
+  /* 编辑页：头部内容与滚动内容对齐到居中容器 */
+  .edit-head { padding: 14px max(24px, calc(50% - var(--editw) / 2 + 24px)); }
+  .edit-scroll { max-width: var(--editw); width: 100%; margin: 0 auto; padding: 24px 0 60px; }
+  .edit-scroll .card { padding: 20px 24px; }
+
+  /* 基础信息表单两列排布，备注独占一行 */
+  .form-card { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .form-card .form-row.col { grid-column: 1 / -1; }
+
+  /* 阶段 / 日期卡与标题同宽；删除按钮不拉满 */
+  .sec-title { font-size: 13px; }
+  #btn-delete { display: block; max-width: 360px; margin: 8px auto 0; }
+
+  /* 日期行桌面端列宽放宽 */
+  .date-name { width: 64px; }
 }
