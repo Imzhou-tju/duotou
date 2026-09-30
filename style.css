@@ -172,14 +172,20 @@ textarea { resize: vertical; }
 /* 弹层内详情 */
 .sheet-company { font-size: 22px; font-weight: 700; }
 .sheet-sub { color: var(--text2); margin-top: 6px; font-size: 14px; }
-.sheet-stages { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
-.sheet-stages .chip { font-size: 14px; padding: 9px 16px; }
-.sheet-dates { border-top: 1px solid var(--border); }
+.sheet-top { display: flex; align-items: center; gap: 10px; }
+.sheet-top .sheet-company { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-dates { border-top: 1px solid var(--border); margin-top: 14px; }
 .sheet-date-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.sheet-date-row:last-child { border-bottom: none; }
 .sheet-date-row .sd-name { width: 56px; font-size: 14px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 .sheet-date-row .sd-dot { width: 8px; height: 8px; border-radius: 50%; }
-.sheet-date-row .sd-val { flex: 1; font-size: 14px; background: var(--bg); border-radius: 8px; padding: 8px 12px; }
-.sheet-date-row .sd-val.placeholder { color: var(--text3); }
+.sheet-date-row .sheet-date-input {
+  flex: 1; min-width: 0; height: 42px; font-size: 15px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 0 12px;
+  background: var(--bg); color: var(--text); outline: none;
+}
+.sheet-date-row .sheet-date-input:focus { border-color: var(--brand); background: #fff; }
+.sheet-date-row .sheet-date-input::placeholder { color: var(--text3); font-size: 13px; }
 .sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
 .sheet-actions .btn { flex: 1; }
 

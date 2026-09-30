@@ -55,13 +55,6 @@ function parseDate(text) {
   if (m) { const d = new Date(new Date().getFullYear(), +m[1] - 1, +m[2]); return isNaN(d) ? null : isoOf(d); }
   return null;
 }
-function formatDateCN(iso) {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-').map(Number);
-  if (!y || !m || !d) return iso;
-  const now = new Date();
-  return y === now.getFullYear() ? `${m}月${d}日` : `${y}年${m}月${d}日`;
-}
 function relTime(ts) {
   if (!ts) return '';
   const diff = Date.now() - new Date(ts).getTime();
@@ -286,6 +279,15 @@ async function deleteRecord(id) {
 }
 
 // ---------- 详情底部弹层 ----------
+// 当前阶段 = 已填日期中最晚的那个阶段（日期是唯一事实来源）
+function stageFromDates(dates) {
+  let best = null, bestD = '';
+  for (const s of ALL_STAGES) {
+    const v = dates && dates[s];
+    if (v && v >= bestD) { bestD = v; best = s; }  // >=：同一天时取流程靠后的阶段
+  }
+  return best;
+}
 function openSheet(id) {
   sheetId = id;
   renderSheet(id);
@@ -299,32 +301,40 @@ function renderSheet(id) {
   const rec = records.find(r => r.id === id); if (!rec) return;
   const color = COLORS[rec.stage] || '#9AA0A6';
   const bits = [rec.position, rec.base].filter(Boolean).map(esc).join(' · ');
-  const stages = ALL_STAGES.map(s =>
-    `<span class="chip ${rec.stage === s ? 'on' : ''}" data-dstage="${s}" style="${rec.stage === s ? 'background:' + color : ''}">${s}</span>`).join('');
   const dates = ALL_STAGES.map(s => {
     const v = rec.stage_dates && rec.stage_dates[s];
-    return `<div class="sheet-date-row"><div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
-      <div class="sd-val ${v ? '' : 'placeholder'}">${v ? formatDateCN(v) : '未记录'}</div></div>`;
+    return `<div class="sheet-date-row">
+      <div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
+      <input class="sheet-date-input" data-sds="${s}" placeholder="未记录 · 可填 今天 / 9月28日" value="${v ? esc(v) : ''}">
+      <button class="date-act" data-sdtoday="${s}">今日</button>
+    </div>`;
   }).join('');
   $('#sheet-body').innerHTML = `
-    <div class="sheet-company">${esc(rec.company)}</div>
+    <div class="sheet-top">
+      <div class="sheet-company">${esc(rec.company)}</div>
+      <span class="pill" style="background:${color}">${esc(rec.stage)}</span>
+    </div>
     <div class="sheet-sub">${bits || ''}</div>
-    <div class="sheet-stages">${stages}</div>
     <div class="sheet-dates">${dates}</div>
     <div class="sheet-actions">
       <button class="btn ghost" data-edit="${rec.id}">编辑全部</button>
       <button class="btn danger" data-del="${rec.id}">删除</button>
     </div>`;
 }
-async function patchStage(id, stage) {
+async function patchSheetDate(id, stage, value) {
   const rec = records.find(r => r.id === id); if (!rec) return;
-  const patch = { stage, update_time: new Date().toISOString() };
-  if (!(rec.stage_dates || {})[stage]) {
-    patch.stage_dates = { ...(rec.stage_dates || {}), [stage]: todayStr() };
-    patch.apply_date = patch.stage_dates['投递'] || rec.apply_date || null;
-  }
+  const dates = { ...(rec.stage_dates || {}) };
+  if (value) dates[stage] = value; else delete dates[stage];
+  const derived = stageFromDates(dates);
+  const patch = {
+    stage_dates: dates,
+    apply_date: dates['投递'] || null,
+    update_time: new Date().toISOString(),
+  };
+  if (derived) patch.stage = derived;   // 没有任何日期时保持原阶段不动
   const { error } = await sb.from('applications').update(patch).eq('id', id);
   if (error) { toast('更新失败：' + error.message); return; }
+  toast(value ? ('已记录 · 当前阶段：' + (derived || rec.stage)) : '已清除该日期');
   await loadRecords();
   renderFeed();
   renderSheet(id);
@@ -397,12 +407,21 @@ function bindEvents() {
   // 详情弹层
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closeSheet(); return; }
-    const ds = e.target.closest('[data-dstage]');
-    if (ds) { patchStage(sheetId, ds.dataset.dstage); return; }
+    const dt = e.target.closest('[data-sdtoday]');
+    if (dt) { patchSheetDate(sheetId, dt.dataset.sdtoday, todayStr()); return; }
     const ed = e.target.closest('[data-edit]');
     if (ed) { closeSheet(); editingId = Number(ed.dataset.edit); showView('edit'); return; }
     const dl = e.target.closest('[data-del]');
     if (dl) { deleteRecord(Number(dl.dataset.del)); }
+  });
+  // 弹层日期直接编辑：解析自然语言/原生日期值，清空即删除该日期
+  $('#sheet').addEventListener('change', (e) => {
+    const inp = e.target.closest('[data-sds]'); if (!inp) return;
+    const raw = inp.value.trim();
+    if (!raw) { patchSheetDate(sheetId, inp.dataset.sds, ''); return; }
+    const v = parseDate(raw);
+    if (!v) { toast('日期看不懂，试试 今天 / 3天前 / 9月28日'); renderSheet(sheetId); return; }
+    patchSheetDate(sheetId, inp.dataset.sds, v);
   });
 
   // 编辑页
