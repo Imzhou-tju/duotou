@@ -175,14 +175,41 @@ textarea { width: 100%; resize: vertical; }
   .auth-card input { height: 48px; font-size: 16px; }
   .auth-card .tip { font-size: 12px; }
 
-  /* 表单行在窄屏改为上下排列，标签在上、输入占满 */
-  .form-row { flex-direction: column; align-items: stretch; gap: 4px; }
-  .form-row .f-label { width: auto; }
-  .f-row { flex-direction: column; align-items: stretch; gap: 4px; }
-  .f-row .f-label { width: auto; }
-
   nav { padding: 10px 12px 0; }
-  main { padding: 12px 12px 60px; }
+  /* 底部留出固定保存栏的高度，避免内容被挡住 */
+  main { padding: 12px 12px 96px; }
   .hero-num { font-size: 34px; }
   .rec-title { font-size: 16px; }
+
+  /* —— 添加/编辑表单：标签在上、输入框占满且加高（≥48px，拇指友好） —— */
+  #view-edit .form-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 0; }
+  #view-edit .form-row .f-label { width: auto; font-size: 15px; }
+  #view-edit .f-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 0; }
+  #view-edit .f-row .f-label { width: auto; font-size: 15px; }
+  #view-edit input, #view-edit textarea { width: 100%; height: 50px; font-size: 16px; }
+  #view-edit textarea { height: auto; min-height: 92px; line-height: 1.5; }
+
+  /* 阶段选择：3 列网格，点按区更大（符合「每屏一个主操作、大点按区」的移动端惯例） */
+  #edit-stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #edit-stages .chip { text-align: center; padding: 13px 0; font-size: 15px; border-radius: 12px; }
+
+  /* 各阶段日期：阶段名占一行，输入框占满下一行（日历/清除按钮紧随其后） */
+  .date-row { flex-wrap: wrap; row-gap: 8px; padding: 14px 0; }
+  .date-name { width: 100%; font-size: 15px; }
+  .date-input { flex: 1 1 auto; min-width: 0; height: 48px; font-size: 16px; }
+  #view-edit .date-picker { flex: 0 0 auto; width: 136px; height: 48px; min-width: 0; }
+  .date-act { flex: 0 0 auto; padding: 8px 10px; font-size: 14px; }
+
+  /* 固定底部操作栏：取消 + 保存常驻屏幕底部，拇指可及，不必滚到表单末尾才保存
+     （参考 iOS 弹窗表单的 Cancel/Done 配对：主操作「保存」用醒目主色，仅一个主操作） */
+  .actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; gap: 10px; margin: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: #fff; box-shadow: 0 -2px 14px rgba(31,35,41,.10);
+  }
+  .actions .btn { height: 50px; font-size: 16px; }
+  #btn-save { flex: 2; }            /* 主操作更占空间、更醒目 */
+  #btn-cancel { flex: 1; }
+  #btn-delete { flex: 0 0 auto; padding: 0 14px; }
 }
