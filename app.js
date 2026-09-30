@@ -233,10 +233,12 @@ function renderDateRows() {
   $('#edit-dates').innerHTML = ALL_STAGES.map(s => `
     <div class="date-row">
       <div class="date-name"><span class="date-dot" style="background:${COLORS[s]}"></span>${s}</div>
-      <input class="date-input" data-ds="${s}" placeholder="今天 / 3天前 / 9月28日" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
       <input type="date" class="date-picker" data-dp="${s}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
-      <button class="date-act" data-today="${s}">今日</button>
-      <button class="date-act clear" data-clear="${s}">清除</button>
+      <div class="date-acts">
+        <button type="button" class="date-act" data-today="${s}">今日</button>
+        <button type="button" class="date-act" data-yesterday="${s}">昨天</button>
+        <button type="button" class="date-act clear" data-clear="${s}">清除</button>
+      </div>
     </div>`).join('');
 }
 function collectForm() {
@@ -486,14 +488,14 @@ function bindEvents() {
     renderEditStagesOnly();
   });
   $('#edit-dates').addEventListener('change', (e) => {
-    const ds = e.target.closest('[data-ds]');
-    if (ds) { draftDates[ds.dataset.ds] = ds.value.trim() ? (parseDate(ds.value) || ds.value.trim()) : ''; renderDateRows(); return; }
     const dp = e.target.closest('[data-dp]');
     if (dp) { draftDates[dp.dataset.dp] = dp.value || ''; renderDateRows(); }
   });
   $('#edit-dates').addEventListener('click', (e) => {
     const td = e.target.closest('[data-today]');
     if (td) { draftDates[td.dataset.today] = todayStr(); renderDateRows(); return; }
+    const yt = e.target.closest('[data-yesterday]');
+    if (yt) { draftDates[yt.dataset.yesterday] = shiftDays(-1); renderDateRows(); return; }
     const cl = e.target.closest('[data-clear]');
     if (cl) { delete draftDates[cl.dataset.clear]; renderDateRows(); }
   });
