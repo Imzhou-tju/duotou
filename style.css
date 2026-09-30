@@ -125,13 +125,6 @@ textarea { resize: vertical; }
 .rec-foot { display: flex; align-items: center; margin-top: 4px; }
 .rec-meta { color: var(--text3); font-size: 12px; flex: 1; }
 
-/* 一键推进 */
-.advance {
-  background: var(--brand-soft); color: var(--brand); border: none;
-  font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 14px; cursor: pointer;
-}
-.advance:active { opacity: .8; }
-
 .empty { text-align: center; color: var(--text3); padding: 60px 0; font-size: 14px; }
 .empty .big { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
 
@@ -189,8 +182,6 @@ textarea { resize: vertical; }
 .sheet-date-row .sd-val.placeholder { color: var(--text3); }
 .sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
 .sheet-actions .btn { flex: 1; }
-.btn-advance { background: var(--brand); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; padding: 14px; width: 100%; cursor: pointer; margin-top: 14px; }
-.btn-advance:active { opacity: .85; }
 
 /* ---------- 账户页 ---------- */
 .account-card { display: flex; align-items: center; gap: 14px; }

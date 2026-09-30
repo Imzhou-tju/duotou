@@ -144,11 +144,6 @@ function pipelineHTML(rec) {
   const dots = STAGES.map((_, i) => `<span class="pl-dot ${i < done ? 'done' : ''}"></span>`).join('');
   return `<div class="pipeline"><div class="pl-fill" style="width:${fill}%"></div>${dots}</div>`;
 }
-function canAdvance(rec) {
-  const i = STAGES.indexOf(rec.stage);
-  return i >= 0 && i < STAGES.length - 1;
-}
-
 // ---------- 投递卡片 ----------
 function recCardHTML(rec) {
   const color = COLORS[rec.stage] || '#9AA0A6';
@@ -162,7 +157,6 @@ function recCardHTML(rec) {
     ${pipelineHTML(rec)}
     <div class="rec-foot">
       <span class="rec-meta">更新于 ${relTime(rec.update_time)}</span>
-      ${canAdvance(rec) ? `<button class="advance" data-advance="${rec.id}">推进 ▸</button>` : ''}
     </div>
   </div>`;
 }
@@ -291,28 +285,6 @@ async function deleteRecord(id) {
   showView('feed');
 }
 
-// ---------- 一键推进阶段 ----------
-async function advanceStage(id) {
-  const rec = records.find(r => r.id === id); if (!rec) return;
-  const idx = STAGES.indexOf(rec.stage);
-  if (idx < 0 || idx >= STAGES.length - 1) return;
-  const next = STAGES[idx + 1];
-  const dates = { ...(rec.stage_dates || {}) };
-  if (!dates[next]) dates[next] = todayStr();
-  const patch = {
-    stage: next,
-    stage_dates: dates,
-    apply_date: dates['投递'] || null,
-    update_time: new Date().toISOString(),
-  };
-  const { error } = await sb.from('applications').update(patch).eq('id', id);
-  if (error) { toast('更新失败：' + error.message); return; }
-  toast('已推进到 ' + next);
-  await loadRecords();
-  renderFeed();
-  if (sheetId === id) renderSheet(id);
-}
-
 // ---------- 详情底部弹层 ----------
 function openSheet(id) {
   sheetId = id;
@@ -334,13 +306,11 @@ function renderSheet(id) {
     return `<div class="sheet-date-row"><div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
       <div class="sd-val ${v ? '' : 'placeholder'}">${v ? formatDateCN(v) : '未记录'}</div></div>`;
   }).join('');
-  const adv = canAdvance(rec) ? `<button class="btn-advance" data-advance="${rec.id}">推进到 ${STAGES[STAGES.indexOf(rec.stage) + 1]} ▸</button>` : '';
   $('#sheet-body').innerHTML = `
     <div class="sheet-company">${esc(rec.company)}</div>
     <div class="sheet-sub">${bits || ''}</div>
     <div class="sheet-stages">${stages}</div>
     <div class="sheet-dates">${dates}</div>
-    ${adv}
     <div class="sheet-actions">
       <button class="btn ghost" data-edit="${rec.id}">编辑全部</button>
       <button class="btn danger" data-del="${rec.id}">删除</button>
@@ -351,6 +321,7 @@ async function patchStage(id, stage) {
   const patch = { stage, update_time: new Date().toISOString() };
   if (!(rec.stage_dates || {})[stage]) {
     patch.stage_dates = { ...(rec.stage_dates || {}), [stage]: todayStr() };
+    patch.apply_date = patch.stage_dates['投递'] || rec.apply_date || null;
   }
   const { error } = await sb.from('applications').update(patch).eq('id', id);
   if (error) { toast('更新失败：' + error.message); return; }
@@ -407,11 +378,9 @@ function bindEvents() {
     feedFilter = t.dataset.filter; renderFeed();
   });
 
-  // 列表卡片：点击打开详情，点推进直接推进（feed + search 共用）
+  // 列表卡片：点击打开详情（feed + search 共用）
   ['feed-list', 'search-list'].forEach(id => {
     $('#' + id).addEventListener('click', (e) => {
-      const adv = e.target.closest('[data-advance]');
-      if (adv) { advanceStage(Number(adv.dataset.advance)); return; }
       const card = e.target.closest('.rec'); if (!card) return;
       openSheet(Number(card.dataset.id));
     });
@@ -430,8 +399,6 @@ function bindEvents() {
     if (e.target.closest('[data-close]')) { closeSheet(); return; }
     const ds = e.target.closest('[data-dstage]');
     if (ds) { patchStage(sheetId, ds.dataset.dstage); return; }
-    const adv = e.target.closest('[data-advance]');
-    if (adv) { advanceStage(Number(adv.dataset.advance)); return; }
     const ed = e.target.closest('[data-edit]');
     if (ed) { closeSheet(); editingId = Number(ed.dataset.edit); showView('edit'); return; }
     const dl = e.target.closest('[data-del]');
