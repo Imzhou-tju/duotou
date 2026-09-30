@@ -228,7 +228,8 @@ function renderEdit() {
   $('#f-link').value = rec ? (rec.link || '') : '';
   $('#f-remark').value = rec ? (rec.remark || '') : '';
   draftStage = rec ? rec.stage : '投递';
-  draftDates = rec && rec.stage_dates ? { ...rec.stage_dates } : {};
+  draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
+    : (rec ? {} : { '投递': todayStr() });   // 新增时默认「投递」日为今天
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
     `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
   renderDateRows();
@@ -440,7 +441,10 @@ function bindEvents() {
   // 编辑页
   $('#edit-stages').addEventListener('click', (e) => {
     const t = e.target.closest('[data-stage]'); if (!t) return;
-    draftStage = t.dataset.stage; renderEditStagesOnly();
+    draftStage = t.dataset.stage;
+    // 选中某阶段时，若该阶段尚无日期则自动记为今天（与详情页一致，少一次手动填日期）
+    if (!draftDates[draftStage]) { draftDates[draftStage] = todayStr(); renderDateRows(); }
+    renderEditStagesOnly();
   });
   $('#edit-dates').addEventListener('change', (e) => {
     const ds = e.target.closest('[data-ds]');
