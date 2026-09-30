@@ -2,11 +2,11 @@
 'use strict';
 
 // ---------- 常量 ----------
-const STAGES = ['投递', '测评', '一面', '二面', '三面', 'Offer'];
+const STAGES = ['投递', '测评', '笔试', '一面', '二面', '三面', 'Offer'];
 const TERMINAL = ['拒绝', '放弃'];
 const ALL_STAGES = [...STAGES, ...TERMINAL];
 const COLORS = {
-  '投递': '#2B6CFF', '测评': '#7B61FF', '一面': '#F5A623', '二面': '#F2792F',
+  '投递': '#2B6CFF', '测评': '#7B61FF', '笔试': '#9B51E0', '一面': '#F5A623', '二面': '#F2792F',
   '三面': '#E8590C', 'Offer': '#22A65B', '拒绝': '#EB5757', '放弃': '#9AA0A6',
 };
 
@@ -132,7 +132,11 @@ async function loadRecords() {
   const { data, error } = await sb.from('applications')
     .select('*').order('update_time', { ascending: false });
   if (error) { toast('加载失败：' + error.message); return; }
-  records = data || [];
+  records = (data || []).map(r => {
+    const derived = stageFromDates(r.stage_dates);
+    if (derived) r.stage = derived;
+    return r;
+  });
 }
 
 // ---------- 阶段流水线（记忆点） ----------
@@ -222,9 +226,9 @@ function renderEdit() {
   $('#f-position').value = rec ? (rec.position || '') : '';
   $('#f-link').value = rec ? (rec.link || '') : '';
   $('#f-remark').value = rec ? (rec.remark || '') : '';
-  draftStage = rec ? rec.stage : '投递';
   draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
     : (rec ? {} : { '投递': todayStr() });   // 新增时默认「投递」日为今天
+  draftStage = stageFromDates(draftDates) || (rec ? rec.stage : '投递');
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
     `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
   renderDateRows();
@@ -247,6 +251,7 @@ function collectForm() {
     const v = (draftDates[s] || '').trim();
     if (v) stage_dates[s] = v;
   }
+  const derived = stageFromDates(stage_dates);
   return {
     company: $('#f-company').value.trim(),
     base: $('#f-base').value.trim() || null,
@@ -254,7 +259,7 @@ function collectForm() {
     position: $('#f-position').value.trim() || null,
     link: $('#f-link').value.trim() || null,
     remark: $('#f-remark').value.trim() || null,
-    stage: draftStage,
+    stage: derived || draftStage || '投递',
     stage_dates,
     apply_date: stage_dates['投递'] || null,
     update_time: new Date().toISOString(),
@@ -375,11 +380,11 @@ async function patchSheetDate(id, stage, value) {
     stage_dates: dates,
     apply_date: dates['投递'] || null,
     update_time: new Date().toISOString(),
+    stage: derived || '投递',
   };
-  if (derived) patch.stage = derived;   // 没有任何日期时保持原阶段不动
   const { error } = await sb.from('applications').update(patch).eq('id', id);
   if (error) { toast('更新失败：' + error.message); return; }
-  toast(value ? ('已记录 · 当前阶段：' + (derived || rec.stage)) : '已清除该日期');
+  toast(value ? ('已记录 · 当前阶段：' + (derived || '投递')) : '已清除该日期');
   await loadRecords();
   renderFeed();
   renderSheet(id);
@@ -489,15 +494,41 @@ function bindEvents() {
   });
   $('#edit-dates').addEventListener('change', (e) => {
     const dp = e.target.closest('[data-dp]');
-    if (dp) { draftDates[dp.dataset.dp] = dp.value || ''; renderDateRows(); }
+    if (dp) {
+      draftDates[dp.dataset.dp] = dp.value || '';
+      const derived = stageFromDates(draftDates);
+      if (derived) draftStage = derived;
+      renderDateRows();
+      renderEditStagesOnly();
+    }
   });
   $('#edit-dates').addEventListener('click', (e) => {
     const td = e.target.closest('[data-today]');
-    if (td) { draftDates[td.dataset.today] = todayStr(); renderDateRows(); return; }
+    if (td) {
+      draftDates[td.dataset.today] = todayStr();
+      const derived = stageFromDates(draftDates);
+      if (derived) draftStage = derived;
+      renderDateRows();
+      renderEditStagesOnly();
+      return;
+    }
     const yt = e.target.closest('[data-yesterday]');
-    if (yt) { draftDates[yt.dataset.yesterday] = shiftDays(-1); renderDateRows(); return; }
+    if (yt) {
+      draftDates[yt.dataset.yesterday] = shiftDays(-1);
+      const derived = stageFromDates(draftDates);
+      if (derived) draftStage = derived;
+      renderDateRows();
+      renderEditStagesOnly();
+      return;
+    }
     const cl = e.target.closest('[data-clear]');
-    if (cl) { delete draftDates[cl.dataset.clear]; renderDateRows(); }
+    if (cl) {
+      delete draftDates[cl.dataset.clear];
+      const derived = stageFromDates(draftDates);
+      draftStage = derived || '投递';
+      renderDateRows();
+      renderEditStagesOnly();
+    }
   });
   $('#btn-save').addEventListener('click', saveRecord);
   $('#btn-cancel').addEventListener('click', () => { editingId = null; showView('feed'); });
