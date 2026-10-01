@@ -128,14 +128,22 @@
           <button type="button" class="seg-btn on" data-mode="single">单个单位</button>
           <button type="button" class="seg-btn" data-mode="group">集团投递</button>
         </div>
-        <div class="form-row" id="row-group" hidden>
-          <span class="f-label">集团</span><input id="f-group" list="group-list" placeholder="如 中信银行（同集团分行会自动合并）"><datalist id="group-list"></datalist>
-          <div id="group-hint" class="input-hint hidden"></div>
+        <!-- 单个单位模式 -->
+        <div id="single-fields">
+          <div class="form-row"><span class="f-label req">单位名称</span><input id="f-company" placeholder="如 字节跳动"></div>
+          <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
+          <div class="form-row"><span class="f-label">岗位名称<button type="button" id="f-pos-batch" class="pos-toggle hidden">批量</button></span><input id="f-position" placeholder="如 后端开发"><textarea id="f-position-multi" rows="3" class="hidden" placeholder="每行一个岗位，其余信息共用"></textarea></div>
         </div>
-        <div class="form-row"><span class="f-label req">单位名称</span><input id="f-company" placeholder="如 字节跳动"></div>
+        <!-- 集团投递模式：先填集团名称，再逐行列出该集团下的投递 -->
+        <div id="group-fields" class="hidden">
+          <div class="form-row"><span class="f-label req">集团名称</span><input id="f-group" list="group-list" placeholder="如 中信银行（同集团分行会自动合并）"><datalist id="group-list"></datalist><div id="group-hint" class="input-hint hidden"></div></div>
+          <div class="form-row col"><span class="f-label req">该集团下的投递</span>
+            <div id="g-rows"></div>
+            <button type="button" id="g-add" class="g-add">＋ 再加一个投递</button>
+            <div class="input-hint">每条投递 = 一个「具体单位 + 岗位」；Base / 链接 / 备注 / 日期为所有投递共用</div>
+          </div>
+        </div>
         <div class="form-row"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
-        <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
-        <div class="form-row"><span class="f-label">岗位名称<button type="button" id="f-pos-batch" class="pos-toggle hidden">批量</button></span><input id="f-position" placeholder="如 后端开发"><textarea id="f-position-multi" rows="3" class="hidden" placeholder="每行一个岗位，其余信息共用"></textarea></div>
         <div class="form-row"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
         <div class="form-row col"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填"></textarea></div>
       </div>

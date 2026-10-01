@@ -93,6 +93,26 @@ textarea { resize: vertical; }
 .form-row { padding: 8px 0; }
 .form-row .f-label { display: block; color: var(--text2); font-size: 14px; margin-bottom: 6px; }
 .input-hint { font-size: 12px; color: var(--brand); margin-top: 5px; font-weight: 500; }
+/* 两种模式的字段分组容器：移动端直接堆叠；桌面端网格布局下让子行参与两列排布 */
+#single-fields:not(.hidden), #group-fields:not(.hidden) { display: contents; }
+/* 集团投递模式：投递行（移动端上下堆叠，桌面端左右并排） */
+.g-row {
+  position: relative; border: 1px solid var(--border); border-radius: 12px;
+  padding: 4px 40px 4px 4px; margin-bottom: 10px; background: var(--bg);
+}
+.g-row:focus-within { border-color: var(--brand); background: #fff; }
+.g-row input { border: none; background: transparent; height: 44px; padding: 4px 12px; }
+.gr-del {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 32px; height: 32px; border: none; background: none;
+  color: var(--text3); font-size: 20px; cursor: pointer; line-height: 1;
+}
+.gr-del:active { color: var(--danger); }
+.g-add {
+  width: 100%; border: 1px dashed #C9D4E4; background: none; border-radius: 12px;
+  padding: 12px; color: var(--brand); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.g-add:active { background: var(--brand-soft); }
 /* 单个单位 / 集团投递 分段切换 */
 .seg { display: flex; gap: 6px; padding: 4px; background: var(--bg); border-radius: 12px; margin-bottom: 4px; }
 .seg-btn { flex: 1; border: none; background: transparent; border-radius: 9px; padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--text2); cursor: pointer; }
@@ -396,10 +416,12 @@ textarea { resize: vertical; }
   .edit-scroll { max-width: var(--editw); width: 100%; margin: 0 auto; padding: 24px 0 60px; }
   .edit-scroll .card { padding: 20px 24px; }
 
-  /* 基础信息表单两列排布，备注独占一行 */
+  /* 基础信息表单两列排布，备注/集团投递列表独占一行 */
   .form-card { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
-  .form-card .seg, .form-card #row-group { grid-column: 1 / -1; }
-  .form-card .form-row.col { grid-column: 1 / -1; }
+  .form-card .seg, .form-card .form-row.col { grid-column: 1 / -1; }
+  /* 集团投递行桌面端左右并排 */
+  .g-row { display: flex; gap: 8px; align-items: center; }
+  .g-row .gr-sub, .g-row .gr-pos { flex: 1; min-width: 0; }
 
   /* 阶段 / 日期卡与标题同宽；删除按钮不拉满 */
   .sec-title { font-size: 13px; }
