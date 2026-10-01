@@ -290,11 +290,17 @@ function groupNameOptions() {
   }
   return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
 }
-// 某个集团下所有子投递的「最新阶段」= 合并所有子投递的日期后取最晚
-function latestStageOfGroup(recs) {
-  const merged = {};
-  for (const r of recs) { if (r.stage_dates) Object.assign(merged, r.stage_dates); }
-  return stageFromDates(merged);
+// 集团「最新进展」= 进行中岗位里，最近活动时间最晚的那个岗位的阶段与日期
+// 进行中 = 投递/测评/笔试/一面/二面/三面（不含 Offer 与 拒绝/放弃）；若无进行中则退而取全部
+function groupProgress(recs) {
+  const prog = recs.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
+  const pool = prog.length ? prog : recs;
+  let best = null, bestDate = '';
+  for (const r of pool) {
+    const last = r.stage_dates ? Object.values(r.stage_dates).sort().pop() : '';
+    if (last && last > bestDate) { bestDate = last; best = r; }
+  }
+  return best ? { stage: best.stage, date: bestDate } : null;
 }
 // 首页：按集团聚合成组卡片；仅 1 条的集团退化为普通卡片
 function renderFeed() {
@@ -324,14 +330,15 @@ function renderFeed() {
   $('#feed-list').innerHTML = html || `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
 }
 function groupCardHTML(groupName, recs) {
-  const gstage = latestStageOfGroup(recs) || '投递';
-  const color = COLORS[gstage] || '#2B6CFF';
+  const gp = groupProgress(recs) || { stage: '投递', date: '' };
+  const color = COLORS[gp.stage] || '#2B6CFF';
+  const dateTxt = gp.date ? ` · 最近 ${esc(gp.date)}` : '';
   return `<div class="rec group" data-group="${esc(groupName)}">
     <div class="rec-top">
       <div class="rec-title">${esc(groupName)}</div>
       <span class="g-badge">${recs.length} 个投递</span>
     </div>
-    <div class="g-agg">最新进展：<strong style="color:${color}">${esc(gstage)}</strong> · 共 ${recs.length} 个岗位</div>
+    <div class="g-agg">最新进展：<strong style="color:${color}">${esc(gp.stage)}</strong>${dateTxt} · 共 ${recs.length} 个岗位</div>
     <div class="rec-foot"><span class="rec-meta">点按查看各投递详情</span><span class="rec-badge">›</span></div>
   </div>`;
 }
@@ -480,7 +487,8 @@ function closeSheet() {
 // 集团弹层：列出该集团下所有子投递，点任意子投递再进它的详情
 function openGroupSheet(groupName) {
   const recs = records.filter(r => (r.group_name || '').trim() === groupName);
-  const gstage = latestStageOfGroup(recs) || '投递';
+  const gp = groupProgress(recs) || { stage: '投递', date: '' };
+  const gstage = gp.stage;
   const color = COLORS[gstage] || '#2B6CFF';
   const rows = recs.map(r => {
     const rc = COLORS[r.stage] || '#9AA0A6';
