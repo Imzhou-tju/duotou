@@ -16,6 +16,7 @@ let user = null;
 let records = [];
 let editingId = null;
 let draftGroup = '';
+let draftMode = 'single';   // 'single' 单个单位 | 'group' 集团投递
 let draftStage = '投递';
 let draftDates = {};
 let feedFilter = 'all';
@@ -384,7 +385,10 @@ function renderEdit() {
   $('#edit-title').textContent = rec ? '编辑投递' : '添加投递';
   $('#btn-delete').classList.toggle('hidden', !rec);
   // 集团名：编辑时取原值；新增时若从集团弹层「在此集团下新增」进入，则带入该集团名
-  $('#f-group').value = rec ? (rec.group_name || '') : (draftGroup || '');
+  const initGroup = rec ? (rec.group_name || '') : (draftGroup || '');
+  draftMode = initGroup ? 'group' : 'single';
+  setModeUI(draftMode);
+  $('#f-group').value = initGroup;
   $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
   $('#f-company').value = rec ? rec.company : '';
   $('#f-base').value = rec ? (rec.base || '') : '';
@@ -407,6 +411,27 @@ function renderEdit() {
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
     `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
   renderDateRows();
+  updateGroupHint();
+}
+// 单个单位 / 集团投递 模式切换
+function setModeUI(mode) {
+  draftMode = mode;
+  document.querySelectorAll('#f-mode .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  $('#row-group').classList.toggle('hidden', mode !== 'group');
+}
+// 选了已有集团名时，提示将自动归并
+function updateGroupHint() {
+  const hint = $('#group-hint');
+  const v = $('#f-group').value.trim();
+  if (draftMode !== 'group' || !v) { hint.classList.add('hidden'); return; }
+  const match = groupNameOptions().find(g => g === v);
+  if (match) {
+    const n = records.filter(r => (r.group_name || '').trim() === v).length;
+    hint.textContent = `将归入已有集团「${v}」（已有 ${n} 个投递，会自动合并）`;
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
 }
 function renderDateRows() {
   $('#edit-dates').innerHTML = ALL_STAGES.map(s => `
@@ -431,7 +456,7 @@ function collectForm() {
   const normalizedBase = normalizeLocation(rawBase);
   return {
     company: $('#f-company').value.trim(),
-    group_name: $('#f-group').value.trim() || null,
+    group_name: draftMode === 'group' ? ($('#f-group').value.trim() || null) : null,
     base: normalizedBase || null,
     sub_unit: $('#f-sub').value.trim() || null,
     position: $('#f-position').value.trim() || null,
@@ -655,7 +680,7 @@ function bindEvents() {
   // 底部标签栏
   $$('.tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
   // 悬浮添加
-  $('#fab').addEventListener('click', () => { editingId = null; draftGroup = ''; showView('edit'); });
+  $('#fab').addEventListener('click', () => { editingId = null; draftGroup = ''; draftMode = 'single'; showView('edit'); });
 
   // feed 筛选
   $('#feed-filters').addEventListener('click', (e) => {
@@ -687,7 +712,7 @@ function bindEvents() {
     const child = e.target.closest('[data-child]');
     if (child) { openSheet(Number(child.dataset.child)); return; }
     const addUnder = e.target.closest('[data-addunder]');
-    if (addUnder) { draftGroup = addUnder.dataset.addunder; editingId = null; closeSheet(); showView('edit'); return; }
+    if (addUnder) { draftGroup = addUnder.dataset.addunder; draftMode = 'group'; editingId = null; closeSheet(); showView('edit'); return; }
     const cp = e.target.closest('[data-copylink]');
     if (cp) {
       const text = cp.dataset.copylink;
@@ -789,7 +814,15 @@ function bindEvents() {
     }
   });
   $('#btn-save').addEventListener('click', saveRecord);
-  $('#btn-cancel').addEventListener('click', () => { editingId = null; draftGroup = ''; showView('feed'); });
+  $('#btn-cancel').addEventListener('click', () => { editingId = null; draftGroup = ''; draftMode = 'single'; showView('feed'); });
+  // 单个单位 / 集团投递 模式切换
+  $('#f-mode').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn'); if (!btn) return;
+    setModeUI(btn.dataset.mode);
+    if (btn.dataset.mode === 'group') { $('#f-group').focus(); updateGroupHint(); }
+  });
+  // 集团名输入时，命中已有集团则提示将自动归并
+  $('#f-group').addEventListener('input', updateGroupHint);
   // 岗位批量模式切换：单输入框 ↔ 多行 textarea
   $('#f-pos-batch').addEventListener('click', () => {
     const btn = $('#f-pos-batch');

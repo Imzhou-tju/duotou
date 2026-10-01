@@ -93,6 +93,11 @@ textarea { resize: vertical; }
 .form-row { padding: 8px 0; }
 .form-row .f-label { display: block; color: var(--text2); font-size: 14px; margin-bottom: 6px; }
 .input-hint { font-size: 12px; color: var(--brand); margin-top: 5px; font-weight: 500; }
+/* 单个单位 / 集团投递 分段切换 */
+.seg { display: flex; gap: 6px; padding: 4px; background: var(--bg); border-radius: 12px; margin-bottom: 4px; }
+.seg-btn { flex: 1; border: none; background: transparent; border-radius: 9px; padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--text2); cursor: pointer; }
+.seg-btn.on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.seg-btn:active { opacity: .8; }
 /* 岗位批量切换按钮（仅新增模式显示） */
 .pos-toggle { font-size: 11px; font-weight: 600; color: var(--brand); background: var(--brand-soft); border: none; border-radius: 10px; padding: 3px 10px; margin-left: 8px; cursor: pointer; }
 .pos-toggle.on { background: var(--brand); color: #fff; }
@@ -393,6 +398,7 @@ textarea { resize: vertical; }
 
   /* 基础信息表单两列排布，备注独占一行 */
   .form-card { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .form-card .seg, .form-card #row-group { grid-column: 1 / -1; }
   .form-card .form-row.col { grid-column: 1 / -1; }
 
   /* 阶段 / 日期卡与标题同宽；删除按钮不拉满 */
