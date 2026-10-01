@@ -392,6 +392,13 @@ function renderEdit() {
   if (hintEl) hintEl.classList.add('hidden');
   $('#f-sub').value = rec ? (rec.sub_unit || '') : '';
   $('#f-position').value = rec ? (rec.position || '') : '';
+  // 批量岗位模式复位（仅新增时提供：一次填表按岗位拆多条）
+  const batchBtn = $('#f-pos-batch');
+  batchBtn.classList.toggle('hidden', !!rec);
+  batchBtn.dataset.on = '0'; batchBtn.classList.remove('on');
+  $('#f-position').classList.remove('hidden');
+  $('#f-position-multi').classList.add('hidden');
+  $('#f-position-multi').value = '';
   $('#f-link').value = rec ? (rec.link || '') : '';
   $('#f-remark').value = rec ? (rec.remark || '') : '';
   draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
@@ -436,17 +443,28 @@ function collectForm() {
     update_time: new Date().toISOString(),
   };
 }
+// 批量岗位模式：textarea 每行一个岗位（去空行/去重）；非批量模式返回 null
+function positionLines() {
+  const multi = $('#f-position-multi');
+  if (multi.classList.contains('hidden')) return null;
+  return [...new Set(multi.value.split(/\n+/).map(s => s.trim()).filter(Boolean))];
+}
 async function saveRecord() {
   const payload = collectForm();
   if (!payload.company) { toast('单位名称必填'); $('#f-company').focus(); return; }
-  let error;
+  const lines = positionLines();
+  let error, n = 1;
   if (editingId) {
     ({ error } = await sb.from('applications').update(payload).eq('id', editingId));
+  } else if (lines && lines.length > 1) {
+    n = lines.length;   // 批量：岗位以外字段共用，一次插入多条
+    ({ error } = await sb.from('applications').insert(lines.map(p => ({ ...payload, position: p }))));
   } else {
+    if (lines && lines.length === 1) payload.position = lines[0];
     ({ error } = await sb.from('applications').insert(payload));
   }
   if (error) { toast('保存失败：' + error.message); return; }
-  toast('已保存');
+  toast(n > 1 ? `已添加 ${n} 条投递` : '已保存');
   editingId = null;
   draftGroup = '';
   await loadRecords();
@@ -772,6 +790,15 @@ function bindEvents() {
   });
   $('#btn-save').addEventListener('click', saveRecord);
   $('#btn-cancel').addEventListener('click', () => { editingId = null; draftGroup = ''; showView('feed'); });
+  // 岗位批量模式切换：单输入框 ↔ 多行 textarea
+  $('#f-pos-batch').addEventListener('click', () => {
+    const btn = $('#f-pos-batch');
+    const on = btn.dataset.on !== '1';
+    btn.dataset.on = on ? '1' : '0';
+    btn.classList.toggle('on', on);
+    $('#f-position').classList.toggle('hidden', on);
+    $('#f-position-multi').classList.toggle('hidden', !on);
+  });
   $('#btn-delete').addEventListener('click', () => deleteRecord());
 
   // 账户
