@@ -17,7 +17,9 @@ let records = [];
 let editingId = null;
 let draftGroup = '';
 let draftMode = 'single';   // 'single' 单个单位 | 'group' 集团投递
-let draftGroupRows = [{ sub: '', pos: '' }];   // 集团投递模式的投递行，每行 = 具体单位 + 岗位
+let draftGroupRows = [newGroupRow()];   // 集团投递模式的投递行：每行 = 具体单位 + 岗位 + Base + 投递日期（各条独立）
+let groupEditStageDates = null;   // 集团模式编辑已有记录时，保留该记录原有的各阶段日期（投递日由行内输入覆盖）
+let groupEditStage = '投递';
 let draftStage = '投递';
 let draftDates = {};
 let feedFilter = 'all';
@@ -27,6 +29,9 @@ let sheetId = null;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+
+// 集团投递模式的一行空白投递：投递日期默认今天（各行的 Base / 日期互不影响）
+function newGroupRow() { return { sub: '', pos: '', base: '', date: todayStr() }; }
 
 // ---------- 工具 ----------
 function esc(s) {
@@ -389,13 +394,24 @@ function renderEdit() {
   const initGroup = rec ? (rec.group_name || '') : (draftGroup || '');
   draftMode = initGroup ? 'group' : 'single';
   setModeUI(draftMode);
-  // 集团模式投递行：编辑时这条记录成为一行；老数据 company 可能是全称（如 中信银行北京市分行），回填到具体单位
+  // 集团模式投递行：编辑时这条记录成为一行，Base / 投递日期取该记录自己的值；
+  // 老数据 company 可能是全称（如 中信银行北京市分行），回填到具体单位
   if (draftMode === 'group') {
     draftGroupRows = rec
-      ? [{ sub: rec.sub_unit || (rec.company !== rec.group_name ? rec.company : '') || '', pos: rec.position || '' }]
-      : [{ sub: '', pos: '' }];
+      ? [{
+          sub: rec.sub_unit || (rec.company !== rec.group_name ? rec.company : '') || '',
+          pos: rec.position || '',
+          base: rec.base || '',
+          date: (rec.stage_dates && rec.stage_dates['投递']) || '',
+        }]
+      : [newGroupRow()];
+    // 编辑已有记录：保留其原有各阶段日期，保存时与行内投递日期合并；新增则从空开始
+    groupEditStageDates = rec && rec.stage_dates ? { ...rec.stage_dates } : null;
+    groupEditStage = rec ? (rec.stage || '投递') : '投递';
   } else {
-    draftGroupRows = [{ sub: '', pos: '' }];
+    draftGroupRows = [newGroupRow()];
+    groupEditStageDates = null;
+    groupEditStage = '投递';
   }
   renderGroupRows();
   $('#f-group').value = initGroup;
@@ -424,22 +440,36 @@ function renderEdit() {
   updateGroupHint();
 }
 // 单个单位 / 集团投递 模式切换（两套表单字段不同）
+// 集团模式下：Base 地在每条投递行里单独填，阶段 / 各阶段日期区也不适用（新增时统一为投递，后续在各条详情里推进）
 function setModeUI(mode) {
   draftMode = mode;
   document.querySelectorAll('#f-mode .seg-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
   $('#single-fields').classList.toggle('hidden', mode !== 'single');
   $('#group-fields').classList.toggle('hidden', mode !== 'group');
-  if (mode === 'group') {
-    if (!draftGroupRows.length) draftGroupRows = [{ sub: '', pos: '' }];
+  const isGroup = mode === 'group';
+  $('#row-base').classList.toggle('hidden', isGroup);
+  $('#sec-stage-title').classList.toggle('hidden', isGroup);
+  $('#sec-stage-card').classList.toggle('hidden', isGroup);
+  $('#sec-dates-title').classList.toggle('hidden', isGroup);
+  $('#sec-dates-card').classList.toggle('hidden', isGroup);
+  if (isGroup) {
+    if (!draftGroupRows.length) draftGroupRows = [newGroupRow()];
     renderGroupRows();
   }
 }
-// 集团投递模式的投递行：每行 = 具体单位/分行（选填） + 岗位名称（选填），至少填一项
+// 集团投递模式的投递行：每行 = 具体单位/分行 + 岗位名称 + Base 地 + 投递日期，四项都只属于这一条投递
 function renderGroupRows() {
   $('#g-rows').innerHTML = draftGroupRows.map((r, i) => `
     <div class="g-row">
-      <input class="gr-sub" data-gi="${i}" data-gf="sub" placeholder="具体单位 / 分行，选填" value="${esc(r.sub || '')}">
-      <input class="gr-pos" data-gi="${i}" data-gf="pos" placeholder="岗位名称，选填" value="${esc(r.pos || '')}">
+      <div class="g-row-line">
+        <input class="gr-sub" data-gi="${i}" data-gf="sub" placeholder="具体单位 / 分行" value="${esc(r.sub || '')}">
+        <input class="gr-pos" data-gi="${i}" data-gf="pos" placeholder="岗位名称" value="${esc(r.pos || '')}">
+      </div>
+      <div class="g-row-line">
+        <input class="gr-base" data-gi="${i}" data-gf="base" placeholder="Base 地，选填（如 成都）" value="${esc(r.base || '')}">
+        <span class="gr-date-lbl">投递日</span>
+        <input class="gr-date" type="date" data-gi="${i}" data-gf="date" aria-label="投递日期" value="${esc(r.date || '')}">
+      </div>
       <button type="button" class="gr-del" data-gdel="${i}" ${draftGroupRows.length <= 1 ? 'hidden' : ''} aria-label="删除此行">×</button>
     </div>`).join('');
 }
@@ -520,31 +550,37 @@ async function saveRecord() {
   await loadRecords();
   showView('feed');
 }
-// 集团投递保存：集团名必填；每行生成一条记录（company=集团名、sub_unit=具体单位），Base/链接/备注/日期共用
+// 集团投递保存：集团名必填；每行生成一条记录（company=集团名、sub_unit=具体单位）。
+// Base 与投递日期按行独立（不同单位 Base 不同、面试时间线也不同）；链接 / 备注共用；
+// 编辑已有记录时，该记录原有的测评/笔试/面试等阶段日期保留，仅投递日被行内输入覆盖
 async function saveGroupRecord() {
   const group = $('#f-group').value.trim();
   if (!group) { toast('集团名称必填'); $('#f-group').focus(); return; }
   let rows = draftGroupRows
-    .map(r => ({ sub: (r.sub || '').trim(), pos: (r.pos || '').trim() }))
-    .filter(r => r.sub || r.pos);
+    .map(r => ({ sub: (r.sub || '').trim(), pos: (r.pos || '').trim(), base: (r.base || '').trim(), date: (r.date || '').trim() }))
+    .filter(r => r.sub || r.pos || r.base || r.date);
   if (!rows.length && !editingId) { toast('请至少填写一个投递（具体单位或岗位）'); return; }
-  if (!rows.length) rows = [{ sub: '', pos: '' }];   // 编辑模式允许清空，保留集团主体
+  if (!rows.length) rows = [{ sub: '', pos: '', base: '', date: '' }];   // 编辑模式允许清空，保留集团主体
   const n = rows.length;
-  const stage_dates = {};
-  for (const s of ALL_STAGES) {
-    const v = (draftDates[s] || '').trim();
-    if (v) stage_dates[s] = v;
-  }
-  const common = {
-    base: normalizeLocation($('#f-base').value.trim()) || null,
-    link: $('#f-link').value.trim() || null,
-    remark: $('#f-remark').value.trim() || null,
-    stage: stageFromDates(stage_dates) || draftStage || '投递',
-    stage_dates,
-    apply_date: stage_dates['投递'] || null,
-    update_time: new Date().toISOString(),
+  const link = $('#f-link').value.trim() || null;
+  const remark = $('#f-remark').value.trim() || null;
+  const mk = r => {
+    const stage_dates = { ...(groupEditStageDates || {}) };
+    if (r.date) stage_dates['投递'] = r.date; else delete stage_dates['投递'];
+    const stage = stageFromDates(stage_dates) || (editingId ? groupEditStage : '投递');
+    return {
+      company: group,
+      group_name: group,
+      sub_unit: r.sub || null,
+      position: r.pos || null,
+      base: normalizeLocation(r.base) || null,
+      link, remark,
+      stage,
+      stage_dates,
+      apply_date: stage_dates['投递'] || null,
+      update_time: new Date().toISOString(),
+    };
   };
-  const mk = r => ({ ...common, company: group, group_name: group, sub_unit: r.sub || null, position: r.pos || null });
   let error;
   if (editingId) {
     ({ error } = await sb.from('applications').update(mk(rows[0])).eq('id', editingId));
@@ -898,7 +934,7 @@ function bindEvents() {
     renderGroupRows();
   });
   $('#g-add').addEventListener('click', () => {
-    draftGroupRows.push({ sub: '', pos: '' });
+    draftGroupRows.push(newGroupRow());
     renderGroupRows();
     const last = $('#g-rows .g-row:last-child .gr-sub');
     if (last) last.focus();

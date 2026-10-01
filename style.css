@@ -95,13 +95,17 @@ textarea { resize: vertical; }
 .input-hint { font-size: 12px; color: var(--brand); margin-top: 5px; font-weight: 500; }
 /* 两种模式的字段分组容器：移动端直接堆叠；桌面端网格布局下让子行参与两列排布 */
 #single-fields:not(.hidden), #group-fields:not(.hidden) { display: contents; }
-/* 集团投递模式：投递行（移动端上下堆叠，桌面端左右并排） */
+/* 集团投递模式：投递行（每行两行内容：单位+岗位 / Base+投递日期），移动端与桌面端同构 */
 .g-row {
   position: relative; border: 1px solid var(--border); border-radius: 12px;
   padding: 4px 40px 4px 4px; margin-bottom: 10px; background: var(--bg);
 }
 .g-row:focus-within { border-color: var(--brand); background: #fff; }
 .g-row input { border: none; background: transparent; height: 44px; padding: 4px 12px; }
+.g-row-line { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.gr-sub, .gr-pos, .gr-base { flex: 1; min-width: 0; }
+.gr-date { flex: 0 0 128px; min-width: 0; }
+.gr-date-lbl { flex-shrink: 0; font-size: 12px; color: var(--text3); padding-left: 12px; }
 .gr-del {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
   width: 32px; height: 32px; border: none; background: none;
@@ -419,9 +423,8 @@ textarea { resize: vertical; }
   /* 基础信息表单两列排布，备注/集团投递列表独占一行 */
   .form-card { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .form-card .seg, .form-card .form-row.col { grid-column: 1 / -1; }
-  /* 集团投递行桌面端左右并排 */
-  .g-row { display: flex; gap: 8px; align-items: center; }
-  .g-row .gr-sub, .g-row .gr-pos { flex: 1; min-width: 0; }
+  /* 集团投递行桌面端：第二行 Base 加长、日期固定宽度（结构与移动端一致） */
+  .g-row .gr-date { flex-basis: 150px; }
 
   /* 阶段 / 日期卡与标题同宽；删除按钮不拉满 */
   .sec-title { font-size: 13px; }

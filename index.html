@@ -140,17 +140,17 @@
           <div class="form-row col"><span class="f-label req">该集团下的投递</span>
             <div id="g-rows"></div>
             <button type="button" id="g-add" class="g-add">＋ 再加一个投递</button>
-            <div class="input-hint">每条投递 = 一个「具体单位 + 岗位」；Base / 链接 / 备注 / 日期为所有投递共用</div>
+            <div class="input-hint">每条投递 = 一个「具体单位 + 岗位 + Base + 投递日期」，各条互不影响；链接 / 备注为所有投递共用</div>
           </div>
         </div>
-        <div class="form-row"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
+        <div class="form-row" id="row-base"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
         <div class="form-row"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
         <div class="form-row col"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填"></textarea></div>
       </div>
-      <div class="sec-title">当前阶段</div>
-      <div class="card"><div id="edit-stages" class="chips"></div></div>
-      <div class="sec-title">各阶段日期</div>
-      <div class="card"><div id="edit-dates"></div></div>
+      <div class="sec-title" id="sec-stage-title">当前阶段</div>
+      <div class="card" id="sec-stage-card"><div id="edit-stages" class="chips"></div></div>
+      <div class="sec-title" id="sec-dates-title">各阶段日期</div>
+      <div class="card" id="sec-dates-card"><div id="edit-dates"></div></div>
       <button id="btn-delete" class="btn danger block hidden">删除这条记录</button>
     </div>
   </section>
