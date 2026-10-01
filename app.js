@@ -30,8 +30,8 @@ let sheetId = null;
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-// 集团投递模式的一行空白投递：投递日期默认今天（各行的 Base / 日期互不影响）
-function newGroupRow() { return { sub: '', pos: '', base: '', date: todayStr() }; }
+// 集团投递模式的一行空白投递：投递日期默认今天（各行的 Base / 日期 / 备注 互不影响）
+function newGroupRow() { return { sub: '', pos: '', base: '', date: todayStr(), remark: '' }; }
 
 // ---------- 工具 ----------
 function esc(s) {
@@ -403,6 +403,7 @@ function renderEdit() {
           pos: rec.position || '',
           base: rec.base || '',
           date: (rec.stage_dates && rec.stage_dates['投递']) || '',
+          remark: rec.remark || '',
         }]
       : [newGroupRow()];
     // 编辑已有记录：保留其原有各阶段日期，保存时与行内投递日期合并；新增则从空开始
@@ -448,6 +449,7 @@ function setModeUI(mode) {
   $('#group-fields').classList.toggle('hidden', mode !== 'group');
   const isGroup = mode === 'group';
   $('#row-base').classList.toggle('hidden', isGroup);
+  $('#row-remark').classList.toggle('hidden', isGroup);
   $('#sec-stage-title').classList.toggle('hidden', isGroup);
   $('#sec-stage-card').classList.toggle('hidden', isGroup);
   $('#sec-dates-title').classList.toggle('hidden', isGroup);
@@ -470,6 +472,7 @@ function renderGroupRows() {
         <span class="gr-date-lbl">投递日</span>
         <input class="gr-date" type="date" data-gi="${i}" data-gf="date" aria-label="投递日期" value="${esc(r.date || '')}">
       </div>
+      <textarea class="gr-remark" data-gi="${i}" data-gf="remark" placeholder="备注，选填" rows="2">${esc(r.remark || '')}</textarea>
       <button type="button" class="gr-del" data-gdel="${i}" ${draftGroupRows.length <= 1 ? 'hidden' : ''} aria-label="删除此行">×</button>
     </div>`).join('');
 }
@@ -557,13 +560,12 @@ async function saveGroupRecord() {
   const group = $('#f-group').value.trim();
   if (!group) { toast('集团名称必填'); $('#f-group').focus(); return; }
   let rows = draftGroupRows
-    .map(r => ({ sub: (r.sub || '').trim(), pos: (r.pos || '').trim(), base: (r.base || '').trim(), date: (r.date || '').trim() }))
-    .filter(r => r.sub || r.pos || r.base || r.date);
+    .map(r => ({ sub: (r.sub || '').trim(), pos: (r.pos || '').trim(), base: (r.base || '').trim(), date: (r.date || '').trim(), remark: (r.remark || '').trim() }))
+    .filter(r => r.sub || r.pos || r.base || r.date || r.remark);
   if (!rows.length && !editingId) { toast('请至少填写一个投递（具体单位或岗位）'); return; }
-  if (!rows.length) rows = [{ sub: '', pos: '', base: '', date: '' }];   // 编辑模式允许清空，保留集团主体
+  if (!rows.length) rows = [{ sub: '', pos: '', base: '', date: '', remark: '' }];   // 编辑模式允许清空，保留集团主体
   const n = rows.length;
-  const link = $('#f-link').value.trim() || null;
-  const remark = $('#f-remark').value.trim() || null;
+  const link = $('#f-link').value.trim() || null;   // 链接仍是全组共用（同一次网申）
   const mk = r => {
     const stage_dates = { ...(groupEditStageDates || {}) };
     if (r.date) stage_dates['投递'] = r.date; else delete stage_dates['投递'];
@@ -574,7 +576,8 @@ async function saveGroupRecord() {
       sub_unit: r.sub || null,
       position: r.pos || null,
       base: normalizeLocation(r.base) || null,
-      link, remark,
+      link,
+      remark: r.remark || null,   // 备注按行独立
       stage,
       stage_dates,
       apply_date: stage_dates['投递'] || null,
