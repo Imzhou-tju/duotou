@@ -88,14 +88,23 @@ const PROV_CITY_MAP = {
   '台湾省': ['台北','新北','高雄','台中','台南','桃园']
 };
 
+// 自治州（后缀「州」，不加「市」；注意不能用 endsWith('州') 判断，会误伤福州/杭州/广州/苏州等）
+const AUTONOMOUS = new Set(['延边','恩施','湘西','黔西南','黔东南','黔南','楚雄','红河','文山','西双版纳',
+  '大理','德宏','怒江','迪庆','临夏','甘南','海北','黄南','海南','果洛','玉树','海西',
+  '昌吉','博尔塔拉','巴音郭楞','克孜勒苏','伊犁','阿坝','甘孜','凉山']);
+// 地区（后缀「地区」）
+const REGIONS = new Set(['大兴安岭']);
+
 const CITY_LOOKUP = {};
 const DIRECT_MUNICIPALITIES = ['北京市', '上海市', '天津市', '重庆市', '香港特别行政区', '澳门特别行政区'];
 
 for (const [prov, cities] of Object.entries(PROV_CITY_MAP)) {
   for (const c of cities) {
-    let suffix = '市';
-    if (c.endsWith('盟') || c.endsWith('州') || c.endsWith('区')) suffix = '';
-    const fullCity = c + suffix;
+    let fullCity;
+    if (c.endsWith('盟') || c.endsWith('新区')) fullCity = c;          // 兴安盟 / 浦东新区 等自带后缀
+    else if (AUTONOMOUS.has(c)) fullCity = c + '州';                    // 延边州 / 阿坝州 …
+    else if (REGIONS.has(c)) fullCity = c + '地区';                     // 大兴安岭地区
+    else fullCity = c + '市';
     const isDirect = DIRECT_MUNICIPALITIES.includes(prov);
     const standardName = isDirect ? prov : (prov + fullCity);
 
@@ -119,21 +128,50 @@ const CITY_SHORT_ALIAS = {
 };
 Object.assign(CITY_LOOKUP, CITY_SHORT_ALIAS);
 
+// 省份级：全称与常用简称 → 标准省名（「海南」优先归海南省，而不是青海的海南藏族自治州）
+const PROV_ALIAS = {};
+for (const prov of Object.keys(PROV_CITY_MAP)) PROV_ALIAS[prov] = prov;
+Object.assign(PROV_ALIAS, {
+  '北京': '北京市', '上海': '上海市', '天津': '天津市', '重庆': '重庆市',
+  '河北': '河北省', '山西': '山西省', '辽宁': '辽宁省', '吉林': '吉林省', '黑龙江': '黑龙江省',
+  '江苏': '江苏省', '浙江': '浙江省', '安徽': '安徽省', '福建': '福建省', '江西': '江西省',
+  '山东': '山东省', '河南': '河南省', '湖北': '湖北省', '湖南': '湖南省', '广东': '广东省',
+  '海南': '海南省', '四川': '四川省', '贵州': '贵州省', '云南': '云南省', '陕西': '陕西省',
+  '甘肃': '甘肃省', '青海': '青海省', '台湾': '台湾省',
+  '内蒙古': '内蒙古自治区', '广西': '广西壮族自治区', '西藏': '西藏自治区',
+  '宁夏': '宁夏回族自治区', '新疆': '新疆维吾尔自治区',
+  '香港': '香港特别行政区', '澳门': '澳门特别行政区',
+});
+
 const ALL_CITY_KEYS = Object.keys(CITY_LOOKUP).sort((a, b) => b.length - a.length);
+
+// 在字符串里找城市：先精确（省 → 城），再按最长子串匹配
+function matchCity(str) {
+  if (PROV_ALIAS[str]) return PROV_ALIAS[str];
+  if (CITY_LOOKUP[str]) return CITY_LOOKUP[str];
+  for (const k of ALL_CITY_KEYS) if (str.includes(k)) return CITY_LOOKUP[k];
+  return '';
+}
 
 function normalizeLocation(raw) {
   if (!raw || typeof raw !== 'string') return '';
   const s = raw.trim();
   if (!s) return '';
-  if (CITY_LOOKUP[s]) return CITY_LOOKUP[s];
-  if (/[/,、\s|&]/.test(s)) return s;
-
-  for (const k of ALL_CITY_KEYS) {
-    if (s.includes(k)) {
-      return CITY_LOOKUP[k];
+  // 多地点写法（成都/深圳、成都、深圳）不做归一化，原样保留
+  if (/[/,，、|&]/.test(s)) return s;
+  // 「福建 莆田」「福建-莆田」「福建·莆田」这类「省 + 市」写法
+  const parts = s.split(/[\s\-—–·]+/).filter(Boolean);
+  if (parts.length === 2) {
+    for (const [a, b] of [[parts[0], parts[1]], [parts[1], parts[0]]]) {
+      const prov = PROV_ALIAS[a];
+      if (!prov) continue;
+      if (DIRECT_MUNICIPALITIES.includes(prov)) return prov;   // 直辖市 + 区名 → 直辖市
+      const city = matchCity(b);
+      if (city && city.startsWith(prov)) return city;          // 市必须确实属于这个省
     }
+    return s;   // 两个都是城市（如「成都 深圳」）→ 视为多地点
   }
-  return s;
+  return matchCity(s) || s;
 }
 
 // 自然语言日期解析
@@ -788,6 +826,21 @@ function exportCSV() {
   URL.revokeObjectURL(url);
   toast('已导出 CSV 到本地');
 }
+// 把历史记录里不规范的 Base（如「福建莆田」「福建 莆田」）批量改写成「省 + 市」标准写法
+async function normalizeAllBases() {
+  const pending = records.filter(r => r.base && normalizeLocation(r.base) !== r.base);
+  if (!pending.length) { toast('所有 Base 已经是规范写法'); return; }
+  if (!confirm(`将把 ${pending.length} 条记录的 Base 改写成标准地名（如「福建莆田」→「福建省莆田市」），继续？`)) return;
+  const jobs = pending.map(async r => {
+    const { error } = await sb.from('applications')
+      .update({ base: normalizeLocation(r.base), update_time: new Date().toISOString() })
+      .eq('id', r.id);
+    return error ? 0 : 1;
+  });
+  const done = (await Promise.all(jobs)).reduce((a, b) => a + b, 0);
+  await loadRecords();
+  toast(done ? `已规范 ${done} 条 Base 地名` : '规范失败，请重试');
+}
 
 // ---------- 事件绑定 ----------
 function bindEvents() {
@@ -993,6 +1046,7 @@ function bindEvents() {
 
   // 账户
   $('#btn-export').addEventListener('click', exportCSV);
+  $('#btn-fix-base').addEventListener('click', normalizeAllBases);
   $('#btn-signout').addEventListener('click', () => sb.auth.signOut());
 }
 
