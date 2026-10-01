@@ -378,7 +378,7 @@ function filteredRecords() {
     if (searchState.stage !== '全部' && r.stage !== searchState.stage) return false;
     if (base && !([r.base, normB].some(x => (x || '').toLowerCase().includes(base)))) return false;
     if (kw) {
-      const hay = [r.company, r.sub_unit, r.position, r.remark, r.base, normB].map(x => (x || '').toLowerCase()).join(' ');
+      const hay = [r.company, r.sub_unit, r.position, r.remark, r.base, normB, r.group_name].map(x => (x || '').toLowerCase()).join(' ');
       if (!hay.includes(kw)) return false;
     }
     return true;
@@ -403,7 +403,10 @@ function renderEdit() {
   $('#btn-delete').classList.toggle('hidden', !rec);
   // 集团名：编辑时取原值；新增时若从集团弹层「在此集团下新增」进入，则带入该集团名
   const initGroup = rec ? (rec.group_name || '') : (draftGroup || '');
-  draftMode = initGroup ? 'group' : 'single';
+  // 「单个单位 + 集团名称」写出来的记录：单位名称与集团名不同（company 保留了真实单位名），
+  // 编辑时回到单个单位模式，避免被集团模式覆写成 group 名
+  const singleTagged = !!(rec && initGroup && rec.company && rec.company !== rec.group_name);
+  draftMode = (initGroup && !singleTagged) ? 'group' : 'single';
   setModeUI(draftMode);
   // 集团模式投递行：编辑时这条记录成为一行，Base / 投递日期取该记录自己的值；
   // 老数据 company 可能是全称（如 中信银行北京市分行），回填到具体单位
@@ -427,6 +430,7 @@ function renderEdit() {
   }
   renderGroupRows();
   $('#f-group').value = initGroup;
+  $('#f-group-single').value = singleTagged ? initGroup : (draftMode === 'single' ? initGroup : '');
   $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
   $('#f-company').value = rec ? rec.company : '';
   $('#f-base').value = rec ? (rec.base || '') : '';
@@ -487,11 +491,15 @@ function renderGroupRows() {
       <button type="button" class="gr-del" data-gdel="${i}" ${draftGroupRows.length <= 1 ? 'hidden' : ''} aria-label="删除此行">×</button>
     </div>`).join('');
 }
-// 选了已有集团名时，提示将自动归并
+// 两处「集团名称」输入（集团模式 / 单个单位模式的选填项）通用：选了已有集团名时提示将自动归并
 function updateGroupHint() {
-  const hint = $('#group-hint');
-  const v = $('#f-group').value.trim();
-  if (draftMode !== 'group' || !v) { hint.classList.add('hidden'); return; }
+  hintFor($('#f-group'), $('#group-hint'), draftMode === 'group');
+  hintFor($('#f-group-single'), $('#group-hint-single'), draftMode === 'single');
+}
+function hintFor(input, hint, active) {
+  if (!input || !hint) return;
+  const v = input.value.trim();
+  if (!active || !v) { hint.classList.add('hidden'); return; }
   const match = groupNameOptions().find(g => g === v);
   if (match) {
     const n = records.filter(r => (r.group_name || '').trim() === v).length;
@@ -524,7 +532,9 @@ function collectForm() {
   const normalizedBase = normalizeLocation(rawBase);
   return {
     company: $('#f-company').value.trim(),
-    group_name: draftMode === 'group' ? ($('#f-group').value.trim() || null) : null,
+    group_name: draftMode === 'group'
+      ? ($('#f-group').value.trim() || null)
+      : ($('#f-group-single').value.trim() || null),
     base: normalizedBase || null,
     sub_unit: $('#f-sub').value.trim() || null,
     position: $('#f-position').value.trim() || null,
@@ -558,7 +568,10 @@ async function saveRecord() {
     ({ error } = await sb.from('applications').insert(payload));
   }
   if (error) { toast('保存失败：' + error.message); return; }
-  toast(n > 1 ? `已添加 ${n} 条投递` : '已保存');
+  const gName = payload.group_name;
+  toast(gName
+    ? (n > 1 ? `已添加 ${n} 条投递，归入「${gName}」` : `已保存，归入「${gName}」`)
+    : (n > 1 ? `已添加 ${n} 条投递` : '已保存'));
   editingId = null;
   draftGroup = '';
   await loadRecords();
@@ -577,12 +590,14 @@ async function saveGroupRecord() {
   if (!rows.length) rows = [{ sub: '', pos: '', base: '', date: '', remark: '' }];   // 编辑模式允许清空，保留集团主体
   const n = rows.length;
   const link = $('#f-link').value.trim() || null;   // 链接仍是全组共用（同一次网申）
+  // 编辑时保留该记录原有的 company（可能来自「单个单位 + 集团名称」，是真实单位名，不等于集团名）
+  const keptCompany = editingId ? (records.find(r => r.id === editingId) || {}).company : null;
   const mk = r => {
     const stage_dates = { ...(groupEditStageDates || {}) };
     if (r.date) stage_dates['投递'] = r.date; else delete stage_dates['投递'];
     const stage = stageFromDates(stage_dates) || (editingId ? groupEditStage : '投递');
     return {
-      company: group,
+      company: (editingId && keptCompany && keptCompany !== group) ? keptCompany : group,
       group_name: group,
       sub_unit: r.sub || null,
       position: r.pos || null,
@@ -648,11 +663,14 @@ function openGroupSheet(groupName) {
   const color = COLORS[gstage] || '#2B6CFF';
   const rows = recs.map(r => {
     const rc = COLORS[r.stage] || '#9AA0A6';
-    const detail = [r.sub_unit, r.position, normalizeLocation(r.base)].filter(Boolean).map(esc).join(' · ');
+    // 集团模式下 company = 集团名；「单个单位 + 集团名称」写出来的记录 company 是真实单位名，一并显示
+    const nameParts = [r.sub_unit, r.company && r.company !== r.group_name ? r.company : null].filter(Boolean);
+    const name = nameParts.join(' · ') || r.company;
+    const detail = [r.position, normalizeLocation(r.base)].filter(Boolean).map(esc).join(' · ');
     const latestDate = r.stage_dates && r.stage_dates[r.stage];
     return `<div class="g-child-row" data-child="${r.id}">
       <div class="g-child-main">
-        <div class="g-child-name">${esc(r.sub_unit || r.company)}</div>
+        <div class="g-child-name">${esc(name)}</div>
         ${detail ? `<div class="g-child-sub">${detail}</div>` : ''}
       </div>
       <div class="g-child-right">
@@ -931,8 +949,14 @@ function bindEvents() {
   // 单个单位 / 集团投递 模式切换
   $('#f-mode').addEventListener('click', (e) => {
     const btn = e.target.closest('.seg-btn'); if (!btn) return;
+    const toGroup = btn.dataset.mode === 'group';
+    // 单个单位里已填了集团名，切到集团模式时带过去，省得再打一遍
+    if (toGroup && !$('#f-group').value.trim() && $('#f-group-single').value.trim()) {
+      $('#f-group').value = $('#f-group-single').value.trim();
+    }
     setModeUI(btn.dataset.mode);
-    if (btn.dataset.mode === 'group') { $('#f-group').focus(); updateGroupHint(); }
+    if (toGroup) $('#f-group').focus();
+    updateGroupHint();
   });
   // 集团投递模式：投递行编辑 / 删除 / 新增
   $('#g-rows').addEventListener('input', (e) => {
@@ -953,8 +977,9 @@ function bindEvents() {
     const last = $('#g-rows .g-row:last-child .gr-sub');
     if (last) last.focus();
   });
-  // 集团名输入时，命中已有集团则提示将自动归并
+  // 集团名输入时，命中已有集团则提示将自动归并（两处集团名输入都监听）
   $('#f-group').addEventListener('input', updateGroupHint);
+  $('#f-group-single').addEventListener('input', updateGroupHint);
   // 岗位批量模式切换：单输入框 ↔ 多行 textarea
   $('#f-pos-batch').addEventListener('click', () => {
     const btn = $('#f-pos-batch');
