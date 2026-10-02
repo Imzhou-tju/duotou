@@ -592,10 +592,7 @@ function renderEdit() {
   if (hintEl) hintEl.classList.add('hidden');
   $('#f-sub').value = rec ? (rec.sub_unit || '') : '';
   // 批量粘贴入口复位
-  const batchBtn = $('#f-pos-batch');
-  batchBtn.dataset.on = '0'; batchBtn.classList.remove('on');
-  $('#f-position-multi').classList.add('hidden');
-  $('#f-position-multi').value = '';
+  setBatchMode(false);
   $('#f-link').value = rec ? (rec.link || '') : '';
   $('#f-remark').value = rec ? (rec.remark || '') : '';
   draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
@@ -859,6 +856,31 @@ function mergePositionLines(u, text) {
   }
   return added;
 }
+// 批量粘贴面板开关：只有一个入口（右上角按钮），展开时按钮文案变「收起」。
+// 关闭时若框里还有内容就先并入岗位列表再收起，避免内容被丢掉。
+function setBatchMode(on, opts) {
+  const btn = $('#f-pos-batch'), box = $('#batch-box'), ta = $('#f-position-multi');
+  if (!btn || !box || !ta) return;
+  if (!on && opts && opts.merge && ta.value.trim()) {
+    const u = draftUnits[0];
+    if (u) {
+      const full = u.positions.length >= MAX_POSITIONS;   // 满了的话 mergePositionLines 内部已提示过
+      const added = mergePositionLines(u, ta.value);
+      rerenderPositions(u);
+      if (added) toast(`已并入 ${added} 个岗位`);
+      else if (!full) toast('没有新增：这些岗位已经在列表里');
+    }
+  }
+  ta.value = '';
+  btn.dataset.on = on ? '1' : '0';
+  btn.classList.toggle('on', on);
+  btn.textContent = on ? '收起' : '批量粘贴';
+  btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  box.classList.toggle('hidden', !on);
+  // 展开时收起「＋ 添加岗位」，避免两个虚线框上下叠着
+  const addBtn = $('#p-add-single');
+  if (addBtn) addBtn.classList.toggle('hidden', on);
+}
 // ---------- 行内校验 ----------
 // 必填未过时：输入框标红 + 字段下方留一行错误文案 + toast 摘要 + 滚到该字段。
 // toast 2.2 秒会消失，行内文案不会，用户滚到别处也能看到是哪一项错了。
@@ -907,6 +929,7 @@ async function saveRecord() {
 }
 // 单个单位保存：岗位列表展开成多条；第一条（若已存在）走 update，其余 insert
 async function doSaveSingleRecord() {
+  setBatchMode(false, { merge: true });   // 批量粘贴框还开着就先并入，避免内容没进列表就被保存掉
   const base = collectForm();
   if (!base.company) { failField('#f-company', '#err-company', '请填写单位名称'); return; }
   const u = draftUnits[0] || newUnit();
@@ -1452,26 +1475,22 @@ function bindEvents() {
   // 集团名输入时，命中已有集团则提示将自动归并（两处集团名输入都监听）
   $('#f-group').addEventListener('input', updateGroupHint);
   $('#f-group-single').addEventListener('input', updateGroupHint);
-  // 批量粘贴：显示多行输入框，写完失焦即并入岗位列表
+  // 批量粘贴：按钮就地展开 / 收起（不靠失焦状态，关闭动作始终有一个明确的入口）
+  // mousedown 先 preventDefault，避免 textarea 失焦触发 blur 并入后，紧接着这次点击又把它打开
+  $('#f-pos-batch').addEventListener('mousedown', (e) => e.preventDefault());
   $('#f-pos-batch').addEventListener('click', () => {
     const btn = $('#f-pos-batch');
-    const on = btn.dataset.on !== '1';
-    btn.dataset.on = on ? '1' : '0';
-    btn.classList.toggle('on', on);
-    $('#f-position-multi').classList.toggle('hidden', !on);
-    if (on) $('#f-position-multi').focus();
+    const open = btn.dataset.on !== '1';
+    setBatchMode(open, { merge: !open });
+    if (open) $('#f-position-multi').focus();
   });
+  // 点别处：有内容就并入并收起，没内容也收起（不然会留在展开态，看着像关不掉）
   $('#f-position-multi').addEventListener('blur', () => {
-    const multi = $('#f-position-multi');
-    if (!multi.value.trim()) return;
-    const u = draftUnits[0];
-    const added = mergePositionLines(u, multi.value);
-    multi.value = '';
-    multi.classList.add('hidden');
-    $('#f-pos-batch').dataset.on = '0';
-    $('#f-pos-batch').classList.remove('on');
-    rerenderPositions(u);
-    if (added) toast(`已并入 ${added} 个岗位`);
+    if ($('#batch-box').classList.contains('hidden')) return;
+    setBatchMode(false, { merge: true });
+  });
+  $('#f-position-multi').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); setBatchMode(false, { merge: true }); }
   });
   $('#btn-delete').addEventListener('click', () => deleteRecord());
 

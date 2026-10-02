@@ -148,10 +148,16 @@
           <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
           <div class="form-row"><span class="f-label">集团名称</span><input id="f-group-single" list="group-list" placeholder="选填，填了自动归并"><div id="group-hint-single" class="input-hint hidden"></div></div>
           <div class="form-row col">
-            <div class="sec-head"><span class="f-label">岗位</span><button type="button" id="f-pos-batch" class="pos-toggle">批量粘贴</button></div>
+            <div class="sec-head">
+              <span class="f-label">岗位</span>
+              <button type="button" id="f-pos-batch" class="pos-toggle" aria-expanded="false" aria-controls="batch-box">批量粘贴</button>
+            </div>
             <div id="single-positions" class="p-list"></div>
             <button type="button" id="p-add-single" class="p-add">＋ 添加岗位</button>
-            <textarea id="f-position-multi" rows="3" class="hidden" placeholder="每行一个岗位，写完点别处即并入上方列表"></textarea>
+            <div id="batch-box" class="batch-box hidden">
+              <textarea id="f-position-multi" rows="3" placeholder="每行一个岗位，例如：&#10;AI 应用开发岗&#10;软件开发岗"></textarea>
+              <div class="batch-foot">点别处或右上角「收起」即并入上方列表，重复的会自动跳过</div>
+            </div>
             <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录</div>
             <div id="err-positions" class="field-err hidden"></div>
           </div>

@@ -101,8 +101,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 .input-hint { font-size: 12px; color: var(--brand); margin-top: 5px; font-weight: 500; }
 /* 行内校验：错误文案挂在字段下方，不依赖会消失的 toast */
 .field-err { font-size: 12px; color: var(--danger); margin-top: 6px; font-weight: 500; }
-.sec-head { display: flex; align-items: center; gap: 10px; }
-.sec-head .f-label { margin-bottom: 6px; }
+/* 段头：标签与右侧次要按钮同一行垂直居中（间距交给 .sec-head，避免标签自带下边距把两者错开） */
+.sec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sec-head .f-label { margin-bottom: 0; }
 /* 两种模式的字段分组容器：移动端直接堆叠；桌面端网格布局下让子行参与两列排布 */
 #single-fields:not(.hidden), #group-fields:not(.hidden) { display: contents; }
 
@@ -201,9 +202,22 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 .seg-btn.on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .seg-btn:active { opacity: .8; }
 .seg-note { font-size: 12px; color: var(--text3); margin: 6px 0 2px; line-height: 1.5; }
-/* 岗位批量粘贴按钮 */
-.pos-toggle { font-size: 12px; font-weight: 600; color: var(--brand); background: var(--brand-soft); border: none; border-radius: 10px; padding: 5px 12px; cursor: pointer; }
+/* 岗位批量粘贴开关：固定行高，展开后变「收起」 */
+.pos-toggle {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 12px;
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+  color: var(--brand); background: var(--brand-soft);
+  border: 1px solid transparent; border-radius: 13px; cursor: pointer;
+}
 .pos-toggle.on { background: var(--brand); color: #fff; }
+.pos-toggle:active { opacity: .85; }
+/* 批量粘贴面板：虚线框折叠区，失焦或收起后并入岗位列表 */
+.batch-box {
+  margin-top: 10px; padding: 10px; border-radius: 12px;
+  border: 1px dashed #C9D4E4; background: #FAFBFD;
+}
+.batch-box textarea { padding: 9px 11px; font-size: 14px; background: #fff; }
+.batch-foot { font-size: 12px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
 .f-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .f-row .f-label { width: 64px; flex-shrink: 0; color: var(--text2); font-size: 14px; }
 .f-row .f-input { flex: 1; }
@@ -484,7 +498,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 /* ---------- 移动端微调（<600px 已默认移动优先，这里做输入体验加固） ---------- */
 @media (max-width: 600px) {
   input, textarea, select,
-  .u-body input, .u-body textarea, .pi-name { font-size: 16px; }   /* 防 iOS 聚焦缩放 */
+  .u-body input, .u-body textarea, .pi-name, .batch-box textarea { font-size: 16px; }   /* 防 iOS 聚焦缩放 */
   .auth-card { max-width: 100%; padding: 34px 22px; }
   .rec-title { font-size: 16px; }
   .u-body { padding: 12px; }
@@ -517,6 +531,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   .form-card.mode-group #row-link { grid-column: 1 / -1; }
   /* 单位卡内 Base 与投递日：桌面端日期列稍宽 */
   .u-line .date-fld { flex: 0 0 168px; }
+
+  /* 「添加岗位」是条目级操作，桌面端收成小按钮（移动端保留整行，方便拇指点） */
+  .p-add { width: auto; padding: 7px 14px; border-radius: 8px; font-size: 12px; }
 
   /* 删除按钮不拉满 */
   #btn-delete { display: block; max-width: 360px; margin: 8px auto 0; }
