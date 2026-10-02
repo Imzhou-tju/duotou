@@ -134,15 +134,21 @@
           <div class="form-row"><span class="f-label req">单位名称</span><input id="f-company" placeholder="如 字节跳动"></div>
           <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
           <div class="form-row"><span class="f-label">集团名称</span><input id="f-group-single" list="group-list" placeholder="选填，填了自动归并"><div id="group-hint-single" class="input-hint hidden"></div></div>
-          <div class="form-row"><span class="f-label">岗位名称<button type="button" id="f-pos-batch" class="pos-toggle hidden">批量</button></span><input id="f-position" placeholder="如 后端开发"><textarea id="f-position-multi" rows="3" class="hidden" placeholder="每行一个岗位，其余信息共用"></textarea></div>
+          <div class="form-row col"><span class="f-label">岗位名称<button type="button" id="f-pos-batch" class="pos-toggle">批量粘贴</button></span>
+            <div id="single-positions"></div>
+            <button type="button" id="p-add-single" class="p-add">＋ 添加岗位</button>
+            <textarea id="f-position-multi" rows="3" class="hidden" placeholder="每行一个岗位，写完点别处即并入上方列表"></textarea>
+            <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录</div>
+          </div>
         </div>
         <!-- 集团投递模式：先填集团名称，再逐行列出该集团下的投递 -->
         <div id="group-fields" class="hidden">
           <div class="form-row"><span class="f-label req">集团名称</span><input id="f-group" list="group-list" placeholder="如 中信银行（同集团分行会自动合并）"><div id="group-hint" class="input-hint hidden"></div></div>
-          <div class="form-row col"><span class="f-label req">该集团下的投递</span>
+          <div class="form-row col"><span class="f-label req">该集团下的单位</span>
             <div id="g-rows"></div>
-            <button type="button" id="g-add" class="g-add">＋ 再加一个投递</button>
-            <div class="input-hint">每条投递 = 一个「具体单位 + 岗位 + Base + 投递日期 + 备注」，各条互不影响；投递链接为所有投递共用</div>
+            <button type="button" id="g-add" class="g-add">＋ 再加一个单位</button>
+            <div class="input-hint">每个单位可投多个岗位，各生成一条记录；Base / 投递日 / 备注按单位填写，投递链接全单共用</div>
+            <div id="g-count" class="p-hint"></div>
           </div>
         </div>
         <div class="form-row" id="row-base"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>

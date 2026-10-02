@@ -95,29 +95,54 @@ textarea { resize: vertical; }
 .input-hint { font-size: 12px; color: var(--brand); margin-top: 5px; font-weight: 500; }
 /* 两种模式的字段分组容器：移动端直接堆叠；桌面端网格布局下让子行参与两列排布 */
 #single-fields:not(.hidden), #group-fields:not(.hidden) { display: contents; }
-/* 集团投递模式：投递行（每行两行内容：单位+岗位 / Base+投递日期），移动端与桌面端同构 */
+/* 集团投递模式：单位卡（单位名 / Base+投递日 / 备注 / 该单位下的岗位列表） */
 .g-row {
   position: relative; border: 1px solid var(--border); border-radius: 12px;
-  padding: 4px 40px 4px 4px; margin-bottom: 10px; background: var(--bg);
+  padding: 4px 8px 8px 4px; margin-bottom: 10px; background: var(--bg);
 }
 .g-row:focus-within { border-color: var(--brand); background: #fff; }
 .g-row input { border: none; background: transparent; height: 44px; padding: 4px 12px; }
 .g-row textarea { border: none; background: transparent; padding: 6px 12px; resize: none; margin-top: 4px; font-family: inherit; font-size: 14px; width: 100%; color: var(--text); }
 .g-row textarea:focus { outline: none; }
 .g-row-line { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.gr-sub, .gr-pos, .gr-base { flex: 1; min-width: 0; }
-.gr-date { flex: 0 0 128px; min-width: 0; }
+.gr-sub, .gr-base { flex: 1; min-width: 0; }
+.gr-date { flex: 0 0 140px; min-width: 0; }
 .gr-date-lbl { flex-shrink: 0; font-size: 12px; color: var(--text3); padding-left: 12px; }
-.gr-del {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  width: 32px; height: 32px; border: none; background: none;
+.u-del {
+  flex-shrink: 0; width: 32px; height: 32px; border: none; background: none;
   color: var(--text3); font-size: 20px; cursor: pointer; line-height: 1;
 }
-.gr-del:active { color: var(--danger); }
+.u-del:active { color: var(--danger); }
+.u-pos-label { font-size: 12px; color: var(--brand); font-weight: 500; padding: 2px 12px 4px; }
+/* 岗位行：比单位卡轻一级，无外框 + 细分隔线 */
+.p-row {
+  display: flex; align-items: center; gap: 4px;
+  border-bottom: 1px solid var(--border); margin: 0 4px 0 12px;
+}
+.p-row:last-child { border-bottom: none; }
+/* 单个单位模式没有单位卡包裹，岗位行不缩进 */
+#single-positions .p-row { margin-left: 0; margin-right: 0; }
+.pi-name {
+  flex: 1; min-width: 0; border: none; background: transparent;
+  height: 44px; padding: 4px 0; font-size: 14px; color: var(--text);
+}
+.pi-name:focus { outline: none; }
+.pi-del {
+  flex-shrink: 0; width: 32px; height: 32px; border: none; background: none;
+  color: var(--text3); font-size: 18px; cursor: pointer; line-height: 1;
+}
+.pi-del:active { color: var(--danger); }
+.p-add {
+  border: none; background: none; color: var(--brand); font-size: 13px; font-weight: 600;
+  padding: 10px 12px; cursor: pointer; align-self: flex-start;
+}
+.p-add:disabled { color: var(--text3); cursor: default; }
+.p-hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
 .g-add {
   width: 100%; border: 1px dashed #C9D4E4; background: none; border-radius: 12px;
   padding: 12px; color: var(--brand); font-size: 14px; font-weight: 600; cursor: pointer;
 }
+.g-add:disabled { color: var(--text3); border-color: var(--border); cursor: default; }
 .g-add:active { background: var(--brand-soft); }
 /* 单个单位 / 集团投递 分段切换 */
 .seg { display: flex; gap: 6px; padding: 4px; background: var(--bg); border-radius: 12px; margin-bottom: 4px; }
