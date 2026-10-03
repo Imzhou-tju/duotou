@@ -1613,7 +1613,8 @@ function bindEvents() {
     const child = e.target.closest('[data-child]');
     if (child) { openSheet(Number(child.dataset.child)); return; }
     const addUnder = e.target.closest('[data-addunder]');
-    if (addUnder) { draftGroup = addUnder.dataset.addunder; openEditView({ mode: 'group' }); return; }
+    // 集团名必须经 openEditView 的 opts.group 传入；先写 draftGroup 再调用会被 opts.group||'' 清空
+    if (addUnder) { openEditView({ mode: 'group', group: addUnder.dataset.addunder }); return; }
     const cp = e.target.closest('[data-copylink]');
     if (cp) {
       const text = cp.dataset.copylink;
