@@ -1,5 +1,6 @@
 /* 多投 · 秋招投递记录 — GitHub Pages + Supabase（北洋蓝 · Pipeline-First 极简） */
 'use strict';
+window.__appStarted = true;   // 告诉 index.html 的看门狗：主脚本已经跑起来了
 
 // ---------- 常量 ----------
 const STAGES = ['投递', '测评', '笔试', '一面', '二面', '三面', 'Offer'];
@@ -205,6 +206,43 @@ function parseDate(text) {
   if (m) { const d = new Date(new Date().getFullYear(), +m[1] - 1, +m[2]); return isNaN(d) ? null : isoOf(d); }
   return null;
 }
+
+// ---------- 日期框：点进去还空着就直接补今天 ----------
+// 手动清空的阶段记在 dateSkip 里，否则「清除」按钮会没用（下次点又自动填回来）
+const dateSkip = new Set();
+function dateSkipKey(el) {
+  if (el.dataset.dp) return 'dp:' + el.dataset.dp;
+  if (el.dataset.sds) return 'sds:' + el.dataset.sds;
+  if (el.dataset.gf === 'date') return 'gf:' + el.dataset.uk;
+  return '';
+}
+// 返回补上的日期；已经有值 / 用户清空过 / 不是日期框 → 返回 ''
+function focusFillDate(el) {
+  if (!el) return '';
+  if (el.value && el.value.trim()) return '';
+  if (dateSkip.has(dateSkipKey(el))) return '';
+  const t = todayStr();
+  el.value = t;
+  // 选中年份，想改就直接覆写这段数字，不用从头删
+  if (el.setSelectionRange) { try { el.setSelectionRange(0, 4); } catch (_) { /* type=date 不支持选区，忽略 */ } }
+  el.classList.add('just-today');
+  setTimeout(() => el.classList.remove('just-today'), 1200);
+  return t;
+}
+// 补上的值要落到数据里，否则保存时丢
+function commitFocusDate(el, t) {
+  if (el.dataset.dp) {
+    draftDates[el.dataset.dp] = t;
+    const derived = stageFromDates(draftDates);
+    if (derived) draftStage = derived;
+    renderEditStagesOnly();      // 只刷阶段 chip，不动日期行，输入框焦点保留
+  } else if (el.dataset.gf === 'date') {
+    const u = draftUnits.find(x => x.key === el.dataset.uk);
+    if (u) u.date = t;
+  }
+  // 详情弹层不在这里写库：关弹层时统一落库（见 flushSheetDates），免得重建 DOM 打断输入
+}
+
 function relTime(ts) {
   if (!ts) return '';
   const diff = Date.now() - new Date(ts).getTime();
@@ -218,13 +256,94 @@ function relTime(ts) {
   return new Date(ts).toLocaleDateString('zh-CN');
 }
 
+// ---------- toast ----------
+// 三种语气：info（默认，深色）/ success（绿）/ error（红）。
+// 错误停留更久，避免用户没看清就消失；成功 / 恢复这类要在 App 里被读到的事件用绿色。
 let toastTimer = null;
-function toast(msg) {
-  const el = $('#toast');
-  el.textContent = msg;
+function hideToast() {
+  const el = $('#toast'); if (el) el.classList.add('hidden');
+  const b = $('#toast-act'); if (b) { b.classList.add('hidden'); b.onclick = null; }
+  clearTimeout(toastTimer);
+}
+function toast(msg, type) {
+  const el = $('#toast'); if (!el) return;
+  const act = $('#toast-act'); if (act) { act.classList.add('hidden'); act.onclick = null; }
+  const t = type || 'info';
+  $('#toast-msg').textContent = msg;
+  el.className = 'toast ' + t;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), 2200);
+  toastTimer = setTimeout(hideToast, t === 'error' ? 3600 : 2200);
+}
+// 带操作按钮的 toast（目前用于「删除后撤销」）：按钮点完立即收起并执行回调
+function toastAction(msg, label, onAct, ms) {
+  const act = $('#toast-act');
+  if (act) {
+    act.textContent = label;
+    act.classList.remove('hidden');
+    act.onclick = () => { hideToast(); if (typeof onAct === 'function') onAct(); };
+  }
+  const el = $('#toast'); if (!el) return;
+  $('#toast-msg').textContent = msg;
+  el.className = 'toast info';
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, ms || 6000);
+}
+// ---------- 启动兜底 ----------
+// SDK / 网络异常时给一张可重试的卡片，不要留白屏让用户以为是 App 坏了
+function showBootError(msg) {
+  const boot = $('#view-boot');
+  const root = $('#app-root'), auth = $('#view-auth');
+  if (root) root.classList.add('hidden');
+  if (auth) auth.classList.add('hidden');
+  if (!boot) return;
+  const m = $('#boot-msg'); if (m) m.textContent = msg;
+  const b = $('#btn-retry'); if (b) b.classList.remove('hidden');
+  boot.classList.remove('hidden');
+}
+function hideBoot() {
+  const boot = $('#view-boot'); if (boot) boot.classList.add('hidden');
+}
+
+// ---------- 覆盖层与返回键 ----------
+// 详情弹层 / 编辑页都是覆盖在主内容之上的浮层。若不进历史栈，安卓返回键会直接退出整个 App。
+// 约定：同一时刻只有一层覆盖；打开时 pushState，关闭时 history.back()，popstate 里做真正的收尾。
+let overlayKind = null;   // 'sheet' | 'edit' | null
+
+function overlayOpen(kind) {
+  if (overlayKind === kind) return;
+  const replace = !!overlayKind;   // 弹层里直接跳编辑：把这条记录换成编辑，避免返回一次又回到已关掉的弹层
+  overlayKind = kind;
+  try { history[replace ? 'replaceState' : 'pushState']({ duotou: kind }, ''); }
+  catch (e) { /* 不支持 history API 的浏览器：覆盖层照用，只是返回键会直接退出 */ }
+}
+// 用户主动关闭（点遮罩 / Esc / 取消按钮）：先同步摘掉标记再回退历史，
+// 这样紧跟着的 back 不会再触发一次 popstate 处理
+function overlayDismiss() {
+  if (!overlayKind) return false;
+  const kind = overlayKind;
+  overlayKind = null;
+  if (kind === 'sheet') closeSheet();
+  try { history.back(); } catch (e) { /* 忽略 */ }
+  return true;
+}
+// 返回键触发的收尾：浏览器已经帮我们退了一格，这里不要再 history.back()，
+// 否则会在 popstate 里再退一次，一路退出应用（编辑页尤其明显）。
+function closeOverlayByBack() {
+  const kind = overlayKind;
+  if (!kind) return;
+  overlayKind = null;
+  if (kind === 'sheet') { closeSheet(); return; }
+  editingId = null;
+  draftGroup = '';
+  draftMode = 'single';
+  showView('feed');
+}
+// 用户点「取消」：主动关，得自己退掉那条历史
+function cancelEdit() {
+  closeOverlayByBack();
+  try { history.back(); } catch (e) { /* 忽略 */ }
 }
 
 // ---------- 视图切换 ----------
@@ -233,7 +352,9 @@ function showView(name) {
   $$('.view').forEach(v => v.classList.add('hidden'));
   $('#view-auth').classList.add('hidden');
   $('#app-root').classList.remove('hidden');
+  hideBoot();
   closeSheet();
+  overlayKind = null;   // 已经切走了，覆盖层的栈标记一并清掉，别让返回键去关一个不存在的弹层
   const map = { feed: '#view-feed', search: '#view-search', account: '#view-account', edit: '#view-edit' };
   if (map[name]) $(map[name]).classList.remove('hidden');
   $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.nav === name));
@@ -243,8 +364,50 @@ function showView(name) {
   if (name === 'edit') renderEdit();
 }
 
+// 进入编辑页的统一入口：所有跳转都经过这里，保证编辑页一定在历史栈里
+function openEditView(opts) {
+  opts = opts || {};
+  editingId = opts.id || null;
+  draftGroup = opts.group || '';
+  draftMode = opts.mode || 'single';
+  // 从弹层直接跳过来时覆盖层还是 sheet，overlayOpen 会把它替换成 edit（而不是再压一层）
+  if (overlayKind === 'sheet') closeSheet();
+  showView('edit');
+  overlayOpen('edit');
+}
+// 编辑页返回列表：把历史条目一起弹掉，否则返回键要按两次
+function cancelEdit() {
+  if (overlayKind === 'edit') {
+    overlayKind = null;
+    try { history.back(); } catch (e) { /* 忽略 */ }
+  }
+  editingId = null;
+  draftGroup = '';
+  draftMode = 'single';
+  showView('feed');
+}
+// 保存成功后回到列表，同样要把编辑页那条历史弹掉（此时编辑页的 DOM 已被 showView 换掉）
+function leaveEditState() {
+  if (overlayKind !== 'edit') return;
+  overlayKind = null;
+  try { history.back(); } catch (e) { /* 忽略 */ }
+}
+
 // ---------- 认证 ----------
 async function initAuth() {
+  try {
+    await doInitAuth();
+  } catch (e) {
+    console.error('[boot]', e);
+    showBootError('初始化失败：' + ((e && e.message) || e));
+  }
+}
+async function doInitAuth() {
+  if (window.__sdkFailed || typeof window.supabase === 'undefined') {
+    // SDK 没加载出来：此时 config.js 里再怎么配也没用，直接给可重试的提示
+    showBootError('云端组件加载失败');
+    return;
+  }
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     $('#view-auth').classList.remove('hidden');
     $('#auth-error').textContent = '请先在 config.js 里填入 SUPABASE_URL 和 SUPABASE_ANON_KEY';
@@ -257,6 +420,7 @@ async function initAuth() {
     user = data.session.user;
     await enterApp();
   } else {
+    hideBoot();
     $('#view-auth').classList.remove('hidden');
   }
   sb.auth.onAuthStateChange((_evt, session) => {
@@ -272,15 +436,58 @@ async function enterApp() {
   showView('feed');
 }
 
+// 列表三态：拉取中 / 成功（可能为空） / 失败。区分开，避免网络错误时被误读成「你还没有记录」
+let loadState = 'idle';        // 'idle' | 'loading' | 'ok' | 'error'
+let loadErrorMessage = '';
 async function loadRecords() {
-  const { data, error } = await sb.from('applications')
-    .select('*').order('update_time', { ascending: false });
-  if (error) { toast('加载失败：' + error.message); return; }
-  records = (data || []).map(r => {
-    const derived = stageFromDates(r.stage_dates);
-    if (derived) r.stage = derived;
-    return r;
-  });
+  loadState = 'loading';
+  loadErrorMessage = '';
+  try {
+    const { data, error } = await sb.from('applications')
+      .select('*').order('update_time', { ascending: false });
+    if (error) throw new Error(error.message);
+    records = (data || []).map(r => {
+      const derived = stageFromDates(r.stage_dates);
+      if (derived) r.stage = derived;
+      return r;
+    });
+    loadState = 'ok';
+  } catch (e) {
+    loadState = 'error';
+    loadErrorMessage = (e && e.message) || String(e);
+  } finally {
+    renderDatalists();
+  }
+}
+// ---------- 输入候选 ----------
+// 单位 / 二级单位 / 集团按键名做精确匹配，一个错别字就会分裂成两张卡。
+// 这里把已有值喂给 datalist，让用户能直接选，从源头减少同音错字。
+function renderDatalists() {
+  const countMap = () => new Map();
+  const tally = (map, v) => {
+    const k = String(v || '').trim();
+    if (!k) return;
+    map.set(k, (map.get(k) || 0) + 1);
+  };
+  const fill = (id, map) => {
+    const el = $(id); if (!el) return;
+    const list = [...map.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'))
+      .slice(0, 80);
+    el.innerHTML = list.map(([v]) => `<option value="${esc(v)}">`).join('');
+  };
+  const companies = countMap(), subs = countMap(), positions = countMap(), bases = countMap();
+  for (const r of records) {
+    tally(companies, r.company);
+    tally(subs, r.sub_unit);
+    tally(positions, r.position);
+    const b = normalizeLocation(r.base);
+    if (b) tally(bases, b);
+  }
+  fill('#company-list', companies);
+  fill('#sub-list', subs);
+  fill('#position-list', positions);
+  fill('#base-list', bases);
 }
 
 // ---------- 阶段流水线（步骤条展示当前所处流程） ----------
@@ -334,7 +541,7 @@ function recCardHTML(rec) {
   const stageDate = rec.stage_dates && rec.stage_dates[rec.stage];
   const stageDateText = stageDate ? ` (${stageDate})` : '';
 
-  return `<div class="rec" data-id="${rec.id}">
+  return `<div class="rec" data-id="${rec.id}" role="button" tabindex="0">
     <div class="rec-top">
       <div class="rec-title">${esc(rec.company)}</div>
       <span class="pill" style="background:${color}">${esc(rec.stage)}</span>
@@ -422,23 +629,76 @@ function bucketChips(names, limit) {
   const rest = uniq.length > limit ? `<span class="bucket-chip more">+${uniq.length - limit}</span>` : '';
   return `<div class="bucket-chips">${shown}${rest}</div>`;
 }
+// 列表空位到底显示什么：拉取中 / 拉取失败 / 真的没数据（或没匹配）——三种情况文案不同
+function listEmptyHTML(kind) {
+  if (loadState === 'loading') {
+    return `<div class="empty"><span class="spinner"></span><div class="big">正在加载…</div></div>`;
+  }
+  if (loadState === 'error') {
+    return `<div class="empty err">
+      <div class="big">加载失败</div>
+      <div class="empty-msg">${esc(loadErrorMessage || '网络或服务异常')}</div>
+      <button type="button" class="btn ghost retry" data-retry="1">重试</button>
+    </div>`;
+  }
+  return kind === 'search'
+    ? `<div class="empty">没有匹配的记录</div>`
+    : `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
+}
+
 // ---------- 首页 ----------
 function renderFeed() {
+  const err = loadState === 'error';
   const active = records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer').length;
   const offers = records.filter(r => r.stage === 'Offer').length;
   const rejects = records.filter(r => TERMINAL.includes(r.stage)).length;
-  $('#stat-active').textContent = active;
-  $('#stat-offer').textContent = offers;
-  $('#stat-reject').textContent = rejects;
-  $('#stat-total').textContent = records.length;
+  $('#stat-active').textContent = err ? '—' : active;
+  $('#stat-offer').textContent = err ? '—' : offers;
+  $('#stat-reject').textContent = err ? '—' : rejects;
+  $('#stat-total').textContent = err ? '—' : records.length;
   $$('#feed-filters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === feedFilter));
+  renderStaleBanner();
 
   const items = bucketize(feedFiltered());
   const shown = items.slice(0, feedShown);
   $('#feed-list').innerHTML = shown.length
     ? shown.map(bucketCardHTML).join('')
-    : `<div class="empty"><div class="big">还没有记录</div>点右下角 + 添加你的第一份投递</div>`;
+    : listEmptyHTML('feed');
   setMoreBtn('#feed-more', shown.length, items.length);
+}
+// 待跟进提醒：进行中且最近一次有记录的日期已超过 SILENT_DAYS 天。数据都在本地，不额外发请求
+const SILENT_DAYS = 7;
+function lastActiveDate(r) {
+  const vals = Object.values(r.stage_dates || {}).filter(Boolean).sort();
+  if (vals.length) return vals[vals.length - 1];
+  if (r.apply_date) return String(r.apply_date);
+  return String(r.update_time || '').slice(0, 10);
+}
+function staleRecords() {
+  const today = todayStr();
+  return records.filter(r => {
+    if (!STAGES.includes(r.stage) || r.stage === 'Offer') return false;
+    const d = lastActiveDate(r);
+    if (!d) return false;
+    return Math.floor((Date.parse(today) - Date.parse(d)) / 86400000) >= SILENT_DAYS;
+  });
+}
+function renderStaleBanner() {
+  const chip = $('#chip-stale'), card = $('#feed-stale');
+  const list = loadState === 'error' ? [] : staleRecords();
+  if (chip) {
+    chip.classList.toggle('hidden', !list.length);
+    chip.textContent = list.length ? `待跟进 ${list.length}` : '待跟进';
+  }
+  if (!card) return;
+  card.classList.toggle('hidden', !list.length);
+  if (list.length) card.innerHTML = `
+    <div class="stale-main">
+      <span class="stale-dot"></span>
+      <span>${list.length} 个投递已 ${SILENT_DAYS} 天没有进展</span>
+    </div>
+    <button type="button" class="stale-btn" id="stale-view">查看</button>`;
+  else card.innerHTML = '';
 }
 function bucketCardHTML(item) {
   if (item.type === 'single') return recCardHTML(item.recs[0]);
@@ -449,7 +709,7 @@ function bucketCardHTML(item) {
   if (item.type === 'group') {
     const unitN = new Set(recs.map(unitKey)).size;
     const names = recs.map(r => String(r.sub_unit || '').trim() || r.company);
-    return `<div class="rec group" data-group="${esc(item.label)}">
+    return `<div class="rec group" data-group="${esc(item.label)}" role="button" tabindex="0">
       <div class="rec-top">
         <div class="rec-title">${esc(item.label)}</div>
         <span class="g-badge">${unitN} 个单位 · ${recs.length} 个岗位</span>
@@ -460,7 +720,7 @@ function bucketCardHTML(item) {
     </div>`;
   }
   const posNames = recs.map(r => String(r.position || '').trim());
-  return `<div class="rec group" data-unit="${unitKeyAttr(item.key)}">
+  return `<div class="rec group" data-unit="${unitKeyAttr(item.key)}" role="button" tabindex="0">
     <div class="rec-top">
       <div class="rec-title">${esc(item.label)}</div>
       <span class="g-badge">${recs.length} 个岗位</span>
@@ -486,6 +746,7 @@ function feedFiltered() {
   if (feedFilter === 'active') return records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
   if (feedFilter === 'Offer') return records.filter(r => r.stage === 'Offer');
   if (feedFilter === 'reject') return records.filter(r => TERMINAL.includes(r.stage));
+  if (feedFilter === 'stale') return staleRecords();
   return records;
 }
 
@@ -526,7 +787,7 @@ function sortRecords(list) {
 }
 function renderSearch() {
   const stageChips = ['全部', ...ALL_STAGES].map(s =>
-    `<span class="chip ${searchState.stage === s ? 'on' : ''}" data-stage="${s}">${s}</span>`).join('');
+    `<span class="chip ${searchState.stage === s ? 'on' : ''}" data-stage="${s}" role="button" tabindex="0" aria-pressed="${searchState.stage === s}">${s}</span>`).join('');
   $('#search-stages').innerHTML = stageChips;
   const list = filteredRecords();
   const unitN = new Set(list.map(unitKey)).size;
@@ -599,7 +860,7 @@ function renderEdit() {
     : (rec ? {} : { '投递': todayStr() });   // 新增时默认「投递」日为今天
   draftStage = stageFromDates(draftDates) || (rec ? rec.stage : '投递');
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
-    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
+    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}" role="button" tabindex="0">${s}</span>`).join('');
   renderDateRows();
   // 每次进入编辑页都把行内错误与日期折叠区复位
   clearAllErrors();
@@ -806,7 +1067,7 @@ function renderDateRows() {
   $('#edit-dates').innerHTML = ALL_STAGES.map(s => `
     <div class="date-row">
       <div class="date-name"><span class="date-dot" style="background:${COLORS[s]}"></span>${s}</div>
-      <input type="date" class="date-picker" data-dp="${s}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
+      <input type="date" class="date-picker" data-dp="${s}" data-skip="${dateSkip.has('dp:' + s) ? '1' : ''}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
       <div class="date-acts">
         <button type="button" class="date-act" data-today="${s}">今日</button>
         <button type="button" class="date-act" data-yesterday="${s}">昨天</button>
@@ -949,7 +1210,7 @@ async function doSaveSingleRecord() {
     const r = await sb.from('applications').insert(list.map(name => ({ ...base, position: name })));
     error = r.error; n = list.length;
   }
-  if (error) { toast('保存失败：' + error.message); return; }
+  if (error) { toast('保存失败：' + error.message, 'error'); return; }
   const gName = base.group_name;
   toast(gName
     ? (n > 1 ? `已添加 ${n} 条投递，归入「${gName}」` : `已保存，归入「${gName}」`)
@@ -1019,24 +1280,44 @@ async function doSaveGroupRecord() {
     const r = await sb.from('applications').insert(inserts);
     if (r.error) error = r.error;
   }
-  if (error) { toast('保存失败：' + error.message); return; }
-  toast(editingId ? '已保存' : (payload.length > 1 ? `已添加 ${payload.length} 条投递` : '已保存'));
+  if (error) { toast('保存失败：' + error.message, 'error'); return; }
+  toast(editingId ? '已保存' : (payload.length > 1 ? `已添加 ${payload.length} 条投递` : '已保存'), 'success');
   editingId = null;
   draftGroup = '';
   await loadRecords();
   showView('feed');
 }
+// 删除后给一次后悔机会：删之前把行内容留一份快照，撤销时原样写回。
+// 不复用原 id（id 是 identity 列，显式写入会报错），但 update_time 一并带回去，排序位置不变。
+const WRITE_FIELDS = ['company','group_name','base','sub_unit','position','link','remark',
+  'stage','stage_dates','apply_date','update_time'];
+let lastDeleted = null;
+
 async function deleteRecord(id) {
   id = id || editingId;
   if (!id) return;
+  const row = records.find(r => r.id === id);
   if (!confirm('确定删除这条投递记录？')) return;
   const { error } = await sb.from('applications').delete().eq('id', id);
-  if (error) { toast('删除失败：' + error.message); return; }
-  toast('已删除');
+  if (error) { toast('删除失败：' + error.message, 'error'); return; }
+  lastDeleted = row || null;
+  toastAction(`已删除「${row ? (row.company || '未命名') : ''}」`, '撤销', restoreDeleted, 6000);
   editingId = null;
   closeSheet();
   await loadRecords();
   showView('feed');
+}
+async function restoreDeleted() {
+  const row = lastDeleted;
+  lastDeleted = null;
+  if (!row) return;
+  const payload = {};
+  for (const f of WRITE_FIELDS) if (row[f] !== undefined) payload[f] = row[f];
+  const { error } = await sb.from('applications').insert(payload);
+  if (error) { toast('恢复失败：' + error.message, 'error'); return; }
+  await loadRecords();
+  toast('已恢复', 'success');
+  if (currentView === 'feed') showView('feed');
 }
 
 // ---------- 详情底部弹层 ----------
@@ -1053,8 +1334,32 @@ function openSheet(id) {
   sheetId = id;
   renderSheet(id);
   $('#sheet').classList.remove('hidden');
+  overlayOpen('sheet');   // 进入历史栈，返回键可关掉弹层而不是退出应用
+}
+// 详情弹层：点日期框自动补的今天没走 change，关弹层前统一落库，避免白填
+function flushSheetDates() {
+  if (!sheetId) return;
+  const inp = document.querySelector('#sheet-body [data-sds]');
+  if (!inp) return;
+  const rec = records.find(r => r.id === sheetId);
+  if (!rec) return;
+  // 先把整张弹层的日期读成一份新对象，再和库里对比；
+  // 有差异才写一次，否则关一次弹层会按行数发 N 次更新。
+  const next = {};
+  document.querySelectorAll('#sheet-body [data-sds]').forEach((el) => {
+    const v = parseDate(String(el.value || '').trim());
+    if (v) next[el.dataset.sds] = v;
+  });
+  const cur = rec.stage_dates || {};
+  const keys = new Set([...Object.keys(cur), ...Object.keys(next)]);
+  let changed = false;
+  for (const k of keys) { if ((cur[k] || '') !== (next[k] || '')) { changed = true; break; } }
+  if (!changed) return;
+  const derived = stageFromDates(next);
+  patchSheetDates(sheetId, next, derived ? ('已记录 · 当前阶段：' + derived) : '已保存日期');
 }
 function closeSheet() {
+  flushSheetDates();
   sheetId = null;
   $('#sheet').classList.add('hidden');
 }
@@ -1063,7 +1368,7 @@ function posRowHTML(r, showGroup) {
   const rc = COLORS[r.stage] || '#9AA0A6';
   const latest = r.stage_dates && r.stage_dates[r.stage];
   const detail = [normalizeLocation(r.base), showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
-  return `<div class="g-child-row" data-child="${r.id}">
+  return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0">
     <div class="g-child-main">
       <div class="g-child-name">${esc(r.position || '未填岗位')}${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
       ${detail ? `<div class="g-child-sub">${detail}</div>` : ''}
@@ -1102,6 +1407,7 @@ function openGroupSheet(groupName) {
     </div>`;
   sheetId = null;
   $('#sheet').classList.remove('hidden');
+  overlayOpen('sheet');   // 进入历史栈，返回键可关掉弹层而不是退出应用
 }
 // 单位弹层：列出同一个单位（company + sub_unit）下的所有岗位
 function openUnitSheet(key) {
@@ -1119,6 +1425,7 @@ function openUnitSheet(key) {
     <div class="g-list">${recs.map(r => posRowHTML(r, true)).join('')}</div>`;
   sheetId = null;
   $('#sheet').classList.remove('hidden');
+  overlayOpen('sheet');   // 进入历史栈，返回键可关掉弹层而不是退出应用
 }
 function renderSheet(id) {
   const rec = records.find(r => r.id === id); if (!rec) return;
@@ -1187,23 +1494,28 @@ function renderSheet(id) {
       <button class="btn danger" data-del="${rec.id}">删除</button>
     </div>`;
 }
-async function patchSheetDate(id, stage, value) {
-  const rec = records.find(r => r.id === id); if (!rec) return;
-  const dates = { ...(rec.stage_dates || {}) };
-  if (value) dates[stage] = value; else delete dates[stage];
-  const derived = stageFromDates(dates);
+async function patchSheetDates(id, dates, msg) {
+  const ref = records.find(r => r.id === id); if (!ref) return;
+  const next = { ...(ref.stage_dates || {}), ...dates };
+  for (const k of Object.keys(next)) if (!next[k]) delete next[k];
+  const derived = stageFromDates(next);
   const patch = {
-    stage_dates: dates,
-    apply_date: dates['投递'] || null,
+    stage_dates: next,
+    apply_date: next['投递'] || null,
     update_time: new Date().toISOString(),
     stage: derived || '投递',
   };
   const { error } = await sb.from('applications').update(patch).eq('id', id);
-  if (error) { toast('更新失败：' + error.message); return; }
-  toast(value ? ('已记录 · 当前阶段：' + (derived || '投递')) : '已清除该日期');
+  if (error) { toast('更新失败：' + error.message, 'error'); return; }
+  if (msg) toast(msg, 'success');
   await loadRecords();
   renderFeed();
   renderSheet(id);
+}
+
+async function patchSheetDate(id, stage, value, opts) {
+  const dates = { ...(value ? { [stage]: value } : {}) };
+  await patchSheetDates(id, dates, (opts && opts.silent) ? '' : (value ? ('已记录 · 当前阶段：' + (stageFromDates({ ...(records.find(r => r.id === id) || {}).stage_dates, ...dates }) || '投递')) : '已清除该日期'));
 }
 
 // ---------- 账户 ----------
@@ -1221,12 +1533,12 @@ function exportCSV() {
   const a = document.createElement('a');
   a.href = url; a.download = `多投投递记录_${todayStr()}.csv`; a.click();
   URL.revokeObjectURL(url);
-  toast('已导出 CSV 到本地');
+  toast('已导出 CSV 到本地', 'success');
 }
 // 把历史记录里不规范的 Base（如「福建莆田」「福建 莆田」）批量改写成「省 + 市」标准写法
 async function normalizeAllBases() {
   const pending = records.filter(r => r.base && normalizeLocation(r.base) !== r.base);
-  if (!pending.length) { toast('所有 Base 已经是规范写法'); return; }
+  if (!pending.length) { toast('所有 Base 已经是规范写法', 'success'); return; }
   if (!confirm(`将把 ${pending.length} 条记录的 Base 改写成标准地名（如「福建莆田」→「福建省莆田市」），继续？`)) return;
   const jobs = pending.map(async r => {
     const { error } = await sb.from('applications')
@@ -1261,7 +1573,7 @@ function bindEvents() {
   // 底部标签栏
   $$('.tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
   // 悬浮添加
-  $('#fab').addEventListener('click', () => { editingId = null; draftGroup = ''; draftMode = 'single'; showView('edit'); });
+  $('#fab').addEventListener('click', () => openEditView());
 
   // feed 筛选
   $('#feed-filters').addEventListener('click', (e) => {
@@ -1307,7 +1619,7 @@ function bindEvents() {
     const child = e.target.closest('[data-child]');
     if (child) { openSheet(Number(child.dataset.child)); return; }
     const addUnder = e.target.closest('[data-addunder]');
-    if (addUnder) { draftGroup = addUnder.dataset.addunder; draftMode = 'group'; editingId = null; closeSheet(); showView('edit'); return; }
+    if (addUnder) { draftGroup = addUnder.dataset.addunder; openEditView({ mode: 'group' }); return; }
     const cp = e.target.closest('[data-copylink]');
     if (cp) {
       const text = cp.dataset.copylink;
@@ -1321,7 +1633,7 @@ function bindEvents() {
     const dt = e.target.closest('[data-sdtoday]');
     if (dt) { patchSheetDate(sheetId, dt.dataset.sdtoday, todayStr()); return; }
     const ed = e.target.closest('[data-edit]');
-    if (ed) { closeSheet(); editingId = Number(ed.dataset.edit); showView('edit'); return; }
+    if (ed) { const id = Number(ed.dataset.edit); closeSheet(); openEditView({ id }); return; }
     const dl = e.target.closest('[data-del]');
     if (dl) { deleteRecord(Number(dl.dataset.del)); }
   });
@@ -1380,6 +1692,16 @@ function bindEvents() {
       renderEditStagesOnly();
     }
   });
+  // 编辑页 / 详情弹层 / 集团行里的日期框：点进去还空着就直接补今天，可直接改数字
+  [$('#edit-dates'), $('#sheet'), $('#g-rows')].forEach((box) => {
+    if (!box) return;
+    box.addEventListener('focusin', (e) => {
+      const el = e.target.closest('input[data-dp], input[data-sds], input[data-gf="date"]');
+      if (!el) return;
+      const t = focusFillDate(el);
+      if (t) commitFocusDate(el, t);
+    });
+  });
   $('#edit-dates').addEventListener('click', (e) => {
     const td = e.target.closest('[data-today]');
     if (td) {
@@ -1401,6 +1723,7 @@ function bindEvents() {
     }
     const cl = e.target.closest('[data-clear]');
     if (cl) {
+      dateSkip.add('dp:' + cl.dataset.clear);
       delete draftDates[cl.dataset.clear];
       const derived = stageFromDates(draftDates);
       draftStage = derived || '投递';
@@ -1409,7 +1732,7 @@ function bindEvents() {
     }
   });
   $('#btn-save').addEventListener('click', saveRecord);
-  $('#btn-cancel').addEventListener('click', () => { editingId = null; draftGroup = ''; draftMode = 'single'; showView('feed'); });
+  $('#btn-cancel').addEventListener('click', cancelEdit);
   // 单个单位 / 集团投递 模式切换
   $('#f-mode').addEventListener('click', (e) => {
     const btn = e.target.closest('.seg-btn'); if (!btn) return;
@@ -1498,12 +1821,33 @@ function bindEvents() {
   $('#btn-export').addEventListener('click', exportCSV);
   $('#btn-fix-base').addEventListener('click', normalizeAllBases);
   $('#btn-signout').addEventListener('click', () => sb.auth.signOut());
+
+  // 安卓返回键：先关掉最上面那层覆盖（详情弹层 / 编辑页），没有覆盖层才真的离开页面。
+  // 少了这条监听，覆盖层不在历史栈里时按返回会直接退出应用。
+  window.addEventListener('popstate', () => closeOverlayByBack());
+  // Esc：关弹层；正在批量粘贴时优先收起批量框（此时弹层还没打开）
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (overlayKind) { closeOverlayByBack(); return; }
+    const bb = $('#batch-box');
+    if (bb && !bb.classList.contains('hidden')) setBatchMode(false, { merge: true });
+  });
+  // chip 是 span、卡片是 div（筛选 / 阶段切换 / 进详情），天生聚焦不到：补成可聚焦、Enter / 空格可操作
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const hit = t.closest('.chip, .rec, .g-child-row');
+    if (!hit) return;
+    e.preventDefault();
+    hit.click();
+  });
 }
 
 // 切阶段时只刷新 chips
 function renderEditStagesOnly() {
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
-    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}">${s}</span>`).join('');
+    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}" role="button" tabindex="0">${s}</span>`).join('');
 }
 
 // ---------- 启动 ----------

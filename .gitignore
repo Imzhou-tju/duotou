@@ -1,0 +1,7 @@
+# 本地校验脚本与产物（不进仓库，改动后可直接跑）
+_verify*.py
+_verify*.js
+_dbg*.py
+_dbg*.png
+_mock.js
+_shot*.png

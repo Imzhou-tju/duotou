@@ -50,11 +50,14 @@
       </div>
 
       <div id="feed-filters" class="chips filter">
-        <span class="chip on" data-filter="all">全部</span>
-        <span class="chip" data-filter="active">进行中</span>
-        <span class="chip" data-filter="Offer">Offer</span>
-        <span class="chip" data-filter="reject">未过</span>
+        <span class="chip on" data-filter="all" role="button" tabindex="0">全部</span>
+        <span class="chip" data-filter="active" role="button" tabindex="0">进行中</span>
+        <span class="chip" data-filter="Offer" role="button" tabindex="0">Offer</span>
+        <span class="chip" data-filter="reject" role="button" tabindex="0">未过</span>
+        <span class="chip chip-todo hidden" id="chip-stale" data-filter="stale" role="button" tabindex="0">待跟进</span>
       </div>
+
+      <div id="feed-stale" class="stale-card hidden"></div>
 
       <div id="feed-list" class="list"></div>
       <button type="button" id="feed-more" class="more-btn hidden">加载更多</button>
@@ -65,9 +68,9 @@
       <div class="search-bar"><input id="search-kw" placeholder="搜索 单位 / 岗位 / 备注 / 集团"></div>
       <div class="card">
         <div class="f-row"><span class="f-label">阶段</span><div id="search-stages" class="chips"></div></div>
-        <div class="f-row"><span class="f-label">单位</span><input id="search-unit" class="f-input" placeholder="如 中信银行 / 北京分行"></div>
-        <div class="f-row"><span class="f-label">岗位</span><input id="search-position" class="f-input" placeholder="如 后端开发"></div>
-        <div class="f-row"><span class="f-label">Base</span><input id="search-base" class="f-input" placeholder="如 北京"></div>
+        <div class="f-row"><span class="f-label">单位</span><input id="search-unit" class="f-input" list="company-list" placeholder="如 中信银行 / 北京分行"></div>
+        <div class="f-row"><span class="f-label">岗位</span><input id="search-position" class="f-input" list="position-list" placeholder="如 后端开发"></div>
+        <div class="f-row"><span class="f-label">Base</span><input id="search-base" class="f-input" list="base-list" placeholder="如 北京"></div>
         <div class="f-row"><span class="f-label">排序</span>
           <select id="search-sort" class="f-input">
             <option value="update">最近更新</option>
@@ -144,8 +147,8 @@
         <div class="seg-note" id="mode-note">一个单位，可填多个岗位；每个岗位生成一条记录</div>
         <!-- 单个单位模式 -->
         <div id="single-fields">
-          <div class="form-row col"><span class="f-label req">单位名称</span><input id="f-company" placeholder="如 字节跳动"><div id="err-company" class="field-err hidden"></div></div>
-          <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" placeholder="选填，如 抖音"></div>
+          <div class="form-row col"><span class="f-label req">单位名称</span><input id="f-company" list="company-list" placeholder="如 字节跳动"><div id="err-company" class="field-err hidden"></div></div>
+          <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" list="sub-list" placeholder="选填，如 抖音"></div>
           <div class="form-row"><span class="f-label">集团名称</span><input id="f-group-single" list="group-list" placeholder="选填，填了自动归并"><div id="group-hint-single" class="input-hint hidden"></div></div>
           <div class="form-row col">
             <div class="sec-head">
@@ -173,7 +176,7 @@
             <div id="err-units" class="field-err hidden"></div>
           </div>
         </div>
-        <div class="form-row" id="row-base"><span class="f-label">Base 地</span><input id="f-base" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
+        <div class="form-row" id="row-base"><span class="f-label">Base 地</span><input id="f-base" list="base-list" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
         <div class="form-row" id="row-link"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
         <div class="form-row col" id="row-remark"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填（集团模式下行内已填则以此行为准）"></textarea></div>
         <!-- 当前阶段：单模式直接编辑；集团模式提示在各条详情里推进 -->
@@ -190,16 +193,74 @@
         </div>
         <!-- 两处「集团名称」输入共用同一份候选（已有集团名） -->
         <datalist id="group-list"></datalist>
+        <!-- 单位 / 二级单位 / 岗位 / Base 的候选都来自已有记录，避免同名打错导致单位被拆成两张卡 -->
+        <datalist id="company-list"></datalist>
+        <datalist id="sub-list"></datalist>
+        <datalist id="position-list"></datalist>
+        <datalist id="base-list"></datalist>
       </div>
       <button id="btn-delete" class="btn danger block hidden">删除这条记录</button>
     </div>
   </section>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite">
+  <span id="toast-msg"></span>
+  <button type="button" id="toast-act" class="toast-act hidden"></button>
+</div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- 启动兜底：SDK / 主脚本加载不出来时，这里给出可重试的提示，而不是留一片白屏 -->
+<div id="view-boot" class="auth-wrap">
+  <div class="auth-card">
+    <div class="logo">多投</div>
+    <div id="boot-msg" class="sub">正在加载…</div>
+    <button id="btn-retry" class="btn primary block hidden">重新加载</button>
+    <div class="tip">加载不出来通常是网络问题（CDN 被墙 / 代理拦截 / 断网）。确认网络后点「重新加载」。</div>
+  </div>
+</div>
+<noscript><div class="auth-wrap"><div class="auth-card"><div class="logo">多投</div><div class="sub">当前浏览器禁用了 JavaScript，无法使用。</div></div></div></noscript>
+
 <script src="config.js"></script>
-<script src="app.js"></script>
+<script>
+/* Supabase SDK 加载：先 jsdelivr，失败自动换 unpkg；都失败时把 __sdkFailed 置为 true，
+   由 app.js 显示上面这张可重试的卡片（而不是 `supabase is not defined` 的白屏）。
+   主脚本 app.js 也走同一条链：SDK 就绪后再插入，避免它先跑起来去用还不存在的 supabase。 */
+(function () {
+  var SOURCES = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+    'https://unpkg.com/@supabase/supabase-js@2'
+  ];
+  var bootEl = document.getElementById('view-boot');
+  var msgEl = document.getElementById('boot-msg');
+  var retryEl = document.getElementById('btn-retry');
+  if (retryEl) retryEl.addEventListener('click', function () { location.reload(); });
+  window.showFatal = function (msg) {
+    if (msgEl) msgEl.textContent = msg;
+    if (retryEl) retryEl.classList.remove('hidden');
+    if (bootEl) bootEl.classList.remove('hidden');
+    var root = document.getElementById('app-root'), auth = document.getElementById('view-auth');
+    if (root) root.classList.add('hidden');
+    if (auth) auth.classList.add('hidden');
+  };
+
+  var appScript = document.createElement('script');
+  appScript.src = 'app.js';
+  appScript.onerror = function () { window.showFatal('页面脚本加载失败'); };
+  var booted = false;
+  function boot() { if (booted) return; booted = true; document.body.appendChild(appScript); }
+
+  function tryNext(i) {
+    if (i >= SOURCES.length) { window.__sdkFailed = true; boot(); return; }
+    var s = document.createElement('script');
+    s.src = SOURCES[i];
+    s.onload = boot;
+    s.onerror = function () { tryNext(i + 1); };
+    document.head.appendChild(s);
+  }
+  tryNext(0);
+  // 看门狗：请求被挂起时既不会 load 也不会 error，超时后强制进主流程
+  setTimeout(function () { if (!window.__appStarted) { window.__sdkFailed = true; boot(); } }, 8000);
+})();
+</script>
 </body>
 </html>

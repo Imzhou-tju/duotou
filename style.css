@@ -231,6 +231,8 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 }
 .chip.on { background: var(--brand); color: #fff; }
 .chips.filter { margin-bottom: 14px; }
+/* 键盘可达：chip 用的是 span，只给键盘焦点画一圈描边，鼠标点击时不出环 */
+.chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* ---------- 列表 & 流水线卡片 ---------- */
 .list { display: flex; flex-direction: column; gap: 12px; }
@@ -337,6 +339,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
 }
 .g-child-row:active { background: var(--border); }
+.g-child-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .g-child-main { flex: 1; min-width: 0; }
 .g-child-name { font-weight: 600; font-size: 15px; }
 .g-child-sub { color: var(--text2); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -479,6 +482,11 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   color: var(--text); outline: none;
 }
 .date-picker:focus { border-color: var(--brand); }
+/* 点日期框自动补上今天：亮一下再淡回去，让人看见值已经填了 */
+.date-picker.just-today, .sheet-date-input.just-today {
+  border-color: var(--brand); background: var(--brand-soft);
+  transition: background 1s ease, border-color 1s ease;
+}
 .date-acts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .date-act {
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
@@ -493,6 +501,21 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   position: fixed; left: 50%; bottom: calc(var(--tabh) + 30px); transform: translateX(-50%);
   background: rgba(26,26,26,.9); color: #fff; font-size: 14px;
   padding: 10px 20px; border-radius: 20px; z-index: 99; max-width: 80vw;
+}
+/* 成功 / 失败用颜色区分：保存失败这种事不该混在普通提示里被 2 秒带过 */
+.toast.success { background: rgba(34,166,91,.95); }
+.toast.error { background: rgba(219,60,60,.95); }
+.toast-act {
+  margin-left: 12px; padding: 4px 12px; border-radius: 14px; border: none;
+  background: rgba(255,255,255,.22); color: #fff; font-size: 13px; cursor: pointer;
+}
+.toast-act:active { background: rgba(255,255,255,.34); }
+.toast-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ---------- 键盘 / 降低动效 ---------- */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
 /* ---------- 移动端微调（<600px 已默认移动优先，这里做输入体验加固） ---------- */
