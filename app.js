@@ -658,7 +658,6 @@ function renderFeed() {
   $('#stat-reject').textContent = err ? '—' : rejects;
   $('#stat-total').textContent = err ? '—' : records.length;
   $$('#feed-filters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === feedFilter));
-  renderStaleBanner();
 
   const items = bucketize(feedFiltered());
   const shown = items.slice(0, feedShown);
@@ -666,40 +665,6 @@ function renderFeed() {
     ? shown.map(bucketCardHTML).join('')
     : listEmptyHTML('feed');
   setMoreBtn('#feed-more', shown.length, items.length);
-}
-// 待跟进提醒：进行中且最近一次有记录的日期已超过 SILENT_DAYS 天。数据都在本地，不额外发请求
-const SILENT_DAYS = 7;
-function lastActiveDate(r) {
-  const vals = Object.values(r.stage_dates || {}).filter(Boolean).sort();
-  if (vals.length) return vals[vals.length - 1];
-  if (r.apply_date) return String(r.apply_date);
-  return String(r.update_time || '').slice(0, 10);
-}
-function staleRecords() {
-  const today = todayStr();
-  return records.filter(r => {
-    if (!STAGES.includes(r.stage) || r.stage === 'Offer') return false;
-    const d = lastActiveDate(r);
-    if (!d) return false;
-    return Math.floor((Date.parse(today) - Date.parse(d)) / 86400000) >= SILENT_DAYS;
-  });
-}
-function renderStaleBanner() {
-  const chip = $('#chip-stale'), card = $('#feed-stale');
-  const list = loadState === 'error' ? [] : staleRecords();
-  if (chip) {
-    chip.classList.toggle('hidden', !list.length);
-    chip.textContent = list.length ? `待跟进 ${list.length}` : '待跟进';
-  }
-  if (!card) return;
-  card.classList.toggle('hidden', !list.length);
-  if (list.length) card.innerHTML = `
-    <div class="stale-main">
-      <span class="stale-dot"></span>
-      <span>${list.length} 个投递已 ${SILENT_DAYS} 天没有进展</span>
-    </div>
-    <button type="button" class="stale-btn" id="stale-view">查看</button>`;
-  else card.innerHTML = '';
 }
 function bucketCardHTML(item) {
   if (item.type === 'single') return recCardHTML(item.recs[0]);
@@ -747,7 +712,6 @@ function feedFiltered() {
   if (feedFilter === 'active') return records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer');
   if (feedFilter === 'Offer') return records.filter(r => r.stage === 'Offer');
   if (feedFilter === 'reject') return records.filter(r => TERMINAL.includes(r.stage));
-  if (feedFilter === 'stale') return staleRecords();
   return records;
 }
 
