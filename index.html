@@ -239,7 +239,9 @@
   };
 
   var appScript = document.createElement('script');
-  appScript.src = 'app.js';
+  /* 带时间戳参数：GitHub Pages 给 app.js 下发 10 分钟浏览器缓存，改版后用户会继续跑旧脚本。
+     每次打开页面都重新拉取 app.js（约 88KB，个人工具可接受），保证逻辑永远是最新版。 */
+  appScript.src = 'app.js?v=' + Date.now();
   appScript.onerror = function () { window.showFatal('页面脚本加载失败'); };
   var booted = false;
   function boot() { if (booted) return; booted = true; document.body.appendChild(appScript); }
