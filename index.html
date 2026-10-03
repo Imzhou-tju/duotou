@@ -161,7 +161,7 @@
               <textarea id="f-position-multi" rows="3" placeholder="每行一个岗位，例如：&#10;AI 应用开发岗&#10;软件开发岗"></textarea>
               <div class="batch-foot">点别处或右上角「收起」即并入上方列表，重复的会自动跳过</div>
             </div>
-            <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录</div>
+            <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录；Base 地与备注按岗位各自填写，互不影响</div>
             <div id="err-positions" class="field-err hidden"></div>
           </div>
         </div>
@@ -172,13 +172,11 @@
             <div id="g-rows"></div>
             <button type="button" id="g-add" class="g-add">＋ 再加一个单位</button>
             <div id="g-count" class="count-badge"></div>
-            <div class="p-hint">每个单位可投多个岗位，各生成一条记录；Base / 投递日 / 备注按单位填写，投递链接全单共用</div>
+            <div class="p-hint">每个单位可投多个岗位，各生成一条记录；Base 地与备注按岗位单独填（留空沿用单位默认值），投递链接全单共用</div>
             <div id="err-units" class="field-err hidden"></div>
           </div>
         </div>
-        <div class="form-row" id="row-base"><span class="f-label">Base 地</span><input id="f-base" list="base-list" placeholder="如 成都 / 深圳 / 江西南昌"><div id="f-base-hint" class="input-hint hidden"></div></div>
         <div class="form-row" id="row-link"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
-        <div class="form-row col" id="row-remark"><span class="f-label">备注</span><textarea id="f-remark" rows="3" placeholder="选填（集团模式下行内已填则以此行为准）"></textarea></div>
         <!-- 当前阶段：单模式直接编辑；集团模式提示在各条详情里推进 -->
         <div class="form-row col" id="row-stage"><span class="f-label">当前阶段</span><div id="edit-stages" class="chips"></div><div class="p-hint">点选阶段即记为今天，也可在下方「各阶段日期」里逐项填写</div></div>
         <div class="form-row col hidden" id="row-stage-group"><span class="f-label">当前阶段</span><div class="p-hint">集团投递下各岗位的进度彼此独立，保存后在各条记录的详情里按日期推进</div></div>

@@ -18,7 +18,8 @@ const MAX_UNITS = 20;       // 集团模式最多单位数
 const MAX_RECORDS = 60;     // 单次提交最多记录数
 let uidSeq = 0;
 function nextKey(p) { return p + (++uidSeq); }
-function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '' }; }
+// Base 地 / 备注挂在「岗位」上：同一个单位的不同岗位，Base 地和备注可能不一样（如总部岗 vs 外地岗）
+function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '' }; }
 function newUnit() {
   return { key: nextKey('u'), recId: null, sub: '', base: '', date: todayStr(), remark: '', positions: [newPosition()] };
 }
@@ -827,17 +828,17 @@ function renderEdit() {
           date: (rec.stage_dates && rec.stage_dates['投递']) || '',
           remark: rec.remark || '',
           // 岗位带上原记录 id：保存时这条走 update，本次新增的岗位行走 insert
-          positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '' }],
+          positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '', base: rec.base || '', remark: rec.remark || '' }],
         }]
       : [newUnit()];
     // 编辑已有记录：保留其原有各阶段日期，保存时与行内投递日期合并；新增则从空开始
     groupEditStageDates = rec && rec.stage_dates ? { ...rec.stage_dates } : null;
     groupEditStage = rec ? (rec.stage || '投递') : '投递';
   } else {
-    // 单个单位模式：单位 / Base / 备注 / 日期都在外层共用字段上，这里只需要装岗位
+    // 单个单位模式：单位 / 链接 / 日期在外层共用字段上；Base / 备注挂在岗位行里，这里只需要装岗位
     draftUnits = [{
       key: nextKey('u'), recId: rec ? rec.id : null,
-      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '' }],
+      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '' }],
     }];
     groupEditStageDates = null;
     groupEditStage = '投递';
@@ -848,14 +849,10 @@ function renderEdit() {
   $('#f-group-single').value = singleTagged ? initGroup : (draftMode === 'single' ? initGroup : '');
   $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
   $('#f-company').value = rec ? rec.company : '';
-  $('#f-base').value = rec ? (rec.base || '') : '';
-  const hintEl = $('#f-base-hint');
-  if (hintEl) hintEl.classList.add('hidden');
   $('#f-sub').value = rec ? (rec.sub_unit || '') : '';
   // 批量粘贴入口复位
   setBatchMode(false);
   $('#f-link').value = rec ? (rec.link || '') : '';
-  $('#f-remark').value = rec ? (rec.remark || '') : '';
   draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
     : (rec ? {} : { '投递': todayStr() });   // 新增时默认「投递」日为今天
   draftStage = stageFromDates(draftDates) || (rec ? rec.stage : '投递');
@@ -869,7 +866,7 @@ function renderEdit() {
   updateGroupHint();
 }
 // 单个单位 / 集团投递 模式切换（两套表单字段不同）
-// 集团模式下：Base / 投递日 / 备注 在每张单位卡里单独填，阶段与各阶段日期区不适用（各条记录在详情里推进）
+// 集团模式下：投递日在单位卡里填；Base 地 / 备注岗位可单独填、留空回落单位默认值；阶段与各阶段日期区不适用（各条记录在详情里推进）
 function setModeUI(mode) {
   draftMode = mode;
   const isGroup = mode === 'group';
@@ -881,8 +878,7 @@ function setModeUI(mode) {
     : '一个单位，可填多个岗位；每个岗位生成一条记录';
   $('#single-fields').classList.toggle('hidden', isGroup);
   $('#group-fields').classList.toggle('hidden', !isGroup);
-  $('#row-base').classList.toggle('hidden', isGroup);
-  $('#row-remark').classList.toggle('hidden', isGroup);
+  // Base 地 / 备注已下放到岗位行：单模式没有整单字段，集团模式由单位卡默认值兜底
   $('#row-stage').classList.toggle('hidden', isGroup);
   $('#row-stage-group').classList.toggle('hidden', !isGroup);
   $('#row-dates').classList.toggle('hidden', isGroup);
@@ -909,9 +905,12 @@ function renderUnits() {
             <span class="fld-label">具体单位 / 分行</span>
             <input class="gr-sub" data-uk="${u.key}" data-gf="sub" placeholder="如 中信银行北京分行" value="${esc(u.sub || '')}">
           </label>
+        </div>
+        <div class="u-sec">
+          <div class="u-sec-title">该单位默认 Base / 备注<span class="u-hint-note">（岗位行未填时以此为准）</span></div>
           <div class="u-line">
             <label class="fld">
-              <span class="fld-label">Base 地</span>
+              <span class="fld-label">默认 Base 地</span>
               <input class="gr-base" data-uk="${u.key}" data-gf="base" placeholder="选填，如 成都" value="${esc(u.base || '')}">
             </label>
             <label class="fld date-fld">
@@ -919,15 +918,14 @@ function renderUnits() {
               <input class="gr-date" type="date" data-uk="${u.key}" data-gf="date" aria-label="投递日期" value="${esc(u.date || '')}">
             </label>
           </div>
-        </div>
-        <div class="u-sec">
           <label class="fld">
-            <span class="fld-label">备注</span>
-            <textarea class="gr-remark" data-uk="${u.key}" data-gf="remark" placeholder="选填" rows="2">${esc(u.remark || '')}</textarea>
+            <span class="fld-label">默认备注</span>
+            <textarea class="gr-remark" data-uk="${u.key}" data-gf="remark" placeholder="选填（岗位行未填时以此为准）" rows="2">${esc(u.remark || '')}</textarea>
           </label>
         </div>
         <div class="u-sec">
           <div class="u-sec-title">该单位下的岗位<span class="u-pos-n" data-posn="${u.key}">（${u.positions.length}）</span></div>
+          <div class="p-hint p-hint-sec">每个岗位可单独填 Base 地与备注，留空则沿用上方默认值</div>
           <div class="u-positions p-list" data-posof="${u.key}"></div>
           <button type="button" class="p-add" data-padd="${u.key}">＋ 添加岗位</button>
         </div>
@@ -942,12 +940,20 @@ function renderUnits() {
 function renderPositions(unit, container) {
   if (!unit || !container) return;
   container.innerHTML = unit.positions.map((p, i) => `
-    <div class="p-row">
-      <span class="pi-idx">${i + 1}</span>
-      <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
-             placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
-      <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
-              ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
+    <div class="p-item">
+      <div class="p-row">
+        <span class="pi-idx">${i + 1}</span>
+        <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
+               placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
+        <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
+                ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
+      </div>
+      <div class="p-meta">
+        <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
+               placeholder="Base 地，如 成都 / 深圳" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
+        <input class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" maxlength="120"
+               placeholder="备注，如 邮箱投的 / 内推" aria-label="岗位 ${i + 1} 的备注" value="${esc(p.remark || '')}">
+      </div>
     </div>`).join('');
   const addBtn = draftMode === 'single' ? $('#p-add-single') : $(`.p-add[data-padd="${unit.key}"]`);
   if (addBtn) {
@@ -1012,6 +1018,15 @@ function editPositionName(u, posKey, value, inputEl) {
   }
   p.name = value;
   updateUnitCount();
+}
+// 岗位行内的 Base 地 / 备注：只改状态不重渲染，保留光标
+function setPositionMeta(u, inputEl) {
+  if (!u || !inputEl.dataset.pk) return false;
+  const p = u.positions.find(x => x.key === inputEl.dataset.pk);
+  if (!p) return false;
+  if (inputEl.dataset.pb) { p.base = inputEl.value; return true; }
+  if (inputEl.dataset.pr) { p.remark = inputEl.value; return true; }
+  return false;
 }
 function removeUnit(unitKey) {
   if (draftUnits.length <= 1) return;
@@ -1086,17 +1101,14 @@ function collectForm() {
     if (v) stage_dates[s] = v;
   }
   const derived = stageFromDates(stage_dates);
-  const rawBase = $('#f-base').value.trim();
-  const normalizedBase = normalizeLocation(rawBase);
+  // Base 地 / 备注按岗位走：collectForm 只管整单共用的字段（单位 / 二级单位 / 集团 / 链接 / 阶段 / 日期）
   return {
     company: $('#f-company').value.trim(),
     group_name: draftMode === 'group'
       ? ($('#f-group').value.trim() || null)
       : ($('#f-group-single').value.trim() || null),
-    base: normalizedBase || null,
     sub_unit: $('#f-sub').value.trim() || null,
     link: $('#f-link').value.trim() || null,
-    remark: $('#f-remark').value.trim() || null,
     stage: derived || draftStage || '投递',
     stage_dates,
     apply_date: stage_dates['投递'] || null,
@@ -1194,20 +1206,36 @@ async function doSaveSingleRecord() {
   const base = collectForm();
   if (!base.company) { failField('#f-company', '#err-company', '请填写单位名称'); return; }
   const u = draftUnits[0] || newUnit();
-  const names = [...new Set(u.positions.map(p => (p.name || '').trim()).filter(Boolean))];
-  const list = names.length ? names : [null];   // 岗位全空也生成 1 条（只投单位不明岗位）
+  // 每个岗位一条记录：Base 地 / 备注取自该岗位自己的输入框，岗位全空也生成 1 条（只投单位不明岗位）
+  const list = [];
+  const seen = new Set();
+  for (const p of u.positions) {
+    const name = (p.name || '').trim();
+    if (name) {
+      const k = posKeyOf(name);
+      if (seen.has(k)) continue;          // 同一单位下重名岗位只留一条，与批量粘贴的去重口径一致
+      seen.add(k);
+    }
+    list.push({
+      name: name || null,
+      base: normalizeLocation(p.base || '') || null,
+      remark: (p.remark || '').trim() || null,
+    });
+  }
+  if (!list.length) list.push({ name: null, base: null, remark: null });
   if (list.length > MAX_RECORDS) { toast(`一次最多提交 ${MAX_RECORDS} 条投递，请分批添加`); return; }
   let error = null, n = 0;
   if (editingId) {
-    const r = await sb.from('applications').update({ ...base, position: list[0] }).eq('id', editingId);
+    const first = list[0];
+    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark }).eq('id', editingId);
     error = r.error; n = 1;
     const rest = list.slice(1);
     if (!error && rest.length) {
-      const r2 = await sb.from('applications').insert(rest.map(name => ({ ...base, position: name })));
+      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark })));
       error = r2.error; n += rest.length;
     }
   } else {
-    const r = await sb.from('applications').insert(list.map(name => ({ ...base, position: name })));
+    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark })));
     error = r.error; n = list.length;
   }
   if (error) { toast('保存失败：' + error.message, 'error'); return; }
@@ -1221,7 +1249,8 @@ async function doSaveSingleRecord() {
   showView('feed');
 }
 // 集团投递保存：集团名必填；每个单位下的每个岗位展开成一条记录（company=集团名、sub_unit=具体单位）。
-// Base / 投递日 / 备注按单位填写（不同单位 Base 不同、面试时间线也不同）；链接全单共用；
+// 投递日按单位填写（不同单位时间线不同）、链接全单共用；Base 地 / 备注岗位可单独填，
+// 岗位留空时回落该单位的默认值；
 // 岗位带 recId（编辑已有记录）走 update，新增的岗位走 insert
 async function doSaveGroupRecord() {
   const group = $('#f-group').value.trim();
@@ -1246,9 +1275,10 @@ async function doSaveGroupRecord() {
         group_name: group,
         sub_unit: sub || null,
         position: name || null,
-        base: normalizeLocation(u.base) || null,
+        // 岗位级 Base / 备注优先，留空则跟随该单位卡上的默认值
+        base: normalizeLocation(p.base) || normalizeLocation(u.base) || null,
         link,
-        remark: (u.remark || '').trim() || null,
+        remark: ((p.remark || '').trim() || (u.remark || '').trim()) || null,
         stage,
         stage_dates,
         apply_date: stage_dates['投递'] || null,
@@ -1647,32 +1677,6 @@ function bindEvents() {
     patchSheetDate(sheetId, inp.dataset.sds, v);
   });
 
-  // 编辑页 Base 地智能纠错与无感提示（不干扰打字速率）
-  $('#f-base').addEventListener('input', (e) => {
-    const raw = e.target.value.trim();
-    const hint = $('#f-base-hint');
-    if (!raw) {
-      if (hint) hint.classList.add('hidden');
-      return;
-    }
-    const norm = normalizeLocation(raw);
-    if (norm && norm !== raw && hint) {
-      hint.textContent = `📍 识别为: ${norm}`;
-      hint.classList.remove('hidden');
-    } else if (hint) {
-      hint.classList.add('hidden');
-    }
-  });
-  $('#f-base').addEventListener('blur', (e) => {
-    const raw = e.target.value.trim();
-    if (!raw) return;
-    const norm = normalizeLocation(raw);
-    if (norm && norm !== raw) {
-      e.target.value = norm;
-      const hint = $('#f-base-hint');
-      if (hint) hint.classList.add('hidden');
-    }
-  });
 
   // 编辑页
   $('#edit-stages').addEventListener('click', (e) => {
@@ -1759,13 +1763,14 @@ function bindEvents() {
   // 输入即清除该字段的行内错误
   $('#f-company').addEventListener('input', () => clearError('#f-company', '#err-company'));
   $('#f-group').addEventListener('input', () => clearError('#f-group', '#err-group'));
-  // 集团模式：单位卡（单位名 / Base / 投递日 / 备注）+ 岗位行
+  // 集团模式：单位卡（单位名 / 默认 Base / 投递日 / 默认备注）+ 岗位行（各自 Base / 备注）
   $('#g-rows').addEventListener('input', (e) => {
     const t = e.target;
     const u = findUnit(t.dataset.uk);
     if (!u) return;
     const eu = $('#err-units'); if (eu) eu.classList.add('hidden');
     if (t.dataset.gf) { u[t.dataset.gf] = t.value; return; }
+    if (setPositionMeta(u, t)) return;      // 岗位行内的 Base 地 / 备注
     if (t.dataset.pk) editPositionName(u, t.dataset.pk, t.value, t);
   });
   $('#g-rows').addEventListener('click', (e) => {
@@ -1788,8 +1793,18 @@ function bindEvents() {
     const t = e.target;
     if (!t.dataset.pk) return;
     const ep = $('#err-positions'); if (ep) ep.classList.add('hidden');
+    if (setPositionMeta(draftUnits[0], t)) return;   // 岗位行内的 Base 地 / 备注
     editPositionName(draftUnits[0], t.dataset.pk, t.value, t);
   });
+  // 岗位行 Base 地失焦时按地名表归一化（与整单 Base 输入同一口径，避免「雄安 / 北京朝阳」这类写法落库）
+  for (const sel of ['#single-positions', '#g-rows']) {
+    document.querySelector(sel).addEventListener('blur', (e) => {
+      const t = e.target;
+      if (!t.classList.contains('pi-base')) return;
+      const norm = normalizeLocation(t.value.trim());
+      if (norm && norm !== t.value) t.value = norm;
+    }, true);   // 捕获阶段：blur 不冒泡，用 capture 才能在离开输入框时拿到
+  }
   $('#single-positions').addEventListener('click', (e) => {
     const delP = e.target.closest('[data-pdel]');
     if (delP) removePosition(delP.dataset.uk, delP.dataset.pdel);
