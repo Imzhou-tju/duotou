@@ -11,7 +11,11 @@
 <title>多投 · 秋招投递记录</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="stylesheet" href="style.css">
+<!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
+     不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preload" as="script" href="app.js?v=20261004-1" data-app>
+<link rel="stylesheet" href="style.css?v=20261004-1">
 </head>
 <body>
 
@@ -239,9 +243,12 @@
   };
 
   var appScript = document.createElement('script');
-  /* 带时间戳参数：GitHub Pages 给 app.js 下发 10 分钟浏览器缓存，改版后用户会继续跑旧脚本。
-     每次打开页面都重新拉取 app.js（约 88KB，个人工具可接受），保证逻辑永远是最新版。 */
-  appScript.src = 'app.js?v=' + Date.now();
+  /* 版本号统一取自 head 里 <link data-app> 的 href：preload 与这里插入的 URL 完全一致，
+     浏览器才能复用预载结果，不会白下载一次 88KB。
+     这里不用时间戳参数——那样每次打开都要重新下载 app.js，启动会明显变慢；
+     改成部署时手动改版本号：改完立刻生效，平时命中浏览器缓存。 */
+  var pre = document.querySelector('link[data-app]');
+  appScript.src = pre ? pre.getAttribute('href') : 'app.js';
   appScript.onerror = function () { window.showFatal('页面脚本加载失败'); };
   var booted = false;
   function boot() { if (booted) return; booted = true; document.body.appendChild(appScript); }
