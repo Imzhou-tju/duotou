@@ -706,6 +706,20 @@ function setMoreBtn(sel, shownN, totalN) {
     el.classList.add('hidden');
   }
 }
+// 滑到底自动加载：把「加载更多」按钮当哨兵，它进入视口就点它，复用上面的点击处理（同一套分页逻辑）。
+// 这两个按钮是静态元素，不随列表 innerHTML 重渲染，所以只需观察一次；全部加载完按钮 hidden，观察器不再触发。
+function setupAutoLoadMore() {
+  if (!('IntersectionObserver' in window)) return;   // 老浏览器没有这个 API，仍可手动点按钮
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      const el = e.target;
+      if (el.classList.contains('hidden')) return;   // 已全部加载完
+      el.click();
+    });
+  }, { rootMargin: '240px 0px' });                  // 提前 240px 触发，滚到底时内容已就位
+  ['#feed-more', '#search-more'].forEach(sel => { const el = $(sel); if (el) io.observe(el); });
+}
 
 function feedFiltered() {
   if (feedFilter === 'all') return records;
@@ -1578,6 +1592,7 @@ function bindEvents() {
   });
   $('#feed-more').addEventListener('click', () => { feedShown += PAGE_SIZE; renderFeed(); });
   $('#search-more').addEventListener('click', () => { searchShown += PAGE_SIZE; renderSearch(); });
+  setupAutoLoadMore();
 
   // 列表卡片：单位卡 → 单位弹层，集团卡 → 集团弹层，单卡 → 详情（feed + search 共用）
   ['feed-list', 'search-list'].forEach(id => {
