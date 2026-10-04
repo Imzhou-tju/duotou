@@ -1358,19 +1358,53 @@ function closeSheet() {
   $('#sheet').classList.add('hidden');
 }
 // 弹层里的岗位行：岗位名 + Base（可选再带集团）+ 阶段 pill + 该阶段最近日期
+// 弹层里的岗位行：紧凑进度条（只画节点与连线，不写阶段文字，窄行才放得下）
+// + 「当前阶段（日期）· 更新于」，和列表单卡的 rec-foot 同一套信息
 function posRowHTML(r, showGroup) {
   const rc = COLORS[r.stage] || '#9AA0A6';
   const latest = r.stage_dates && r.stage_dates[r.stage];
   const detail = [normalizeLocation(r.base), showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
+  const stageDateText = latest ? `（${esc(latest)}）` : '';
   return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0">
     <div class="g-child-main">
       <div class="g-child-name">${esc(r.position || '未填岗位')}${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
       ${detail ? `<div class="g-child-sub">${detail}</div>` : ''}
+      ${pipelineMiniHTML(r)}
+      <div class="g-child-foot">当前：<strong style="color:${rc}">${esc(r.stage)}</strong>${stageDateText} · 更新于 ${relTime(r.update_time) || '—'}</div>
     </div>
     <div class="g-child-right">
       <span class="pill" style="background:${rc}">${esc(r.stage)}</span>
-      ${latest ? `<div class="g-child-date">${esc(latest)}</div>` : ''}
     </div>
+  </div>`;
+}
+// 紧凑版流程条：与 pipelineHTML 同一套节点/连线算法，去掉阶段文字
+function pipelineMiniHTML(rec) {
+  const curStage = rec.stage || '投递';
+  const isTerm = TERMINAL.includes(curStage);
+  let curIdx = STAGES.indexOf(curStage);
+  if (isTerm) {
+    // 终态不在流程内，按 stage_dates 里已记录的流程阶段推断走到哪一步（取最靠后的那个）
+    const reached = Object.keys(rec.stage_dates || {}).filter(s => STAGES.indexOf(s) >= 0)
+      .sort((a, b) => STAGES.indexOf(b) - STAGES.indexOf(a));
+    curIdx = reached.length ? STAGES.indexOf(reached[0]) : -1;
+  }
+  const termColor = COLORS[curStage] || '#9AA0A6';
+  const color = isTerm ? termColor : (COLORS[curStage] || '#2B6CFF');
+  const dots = STAGES.map((s, i) => {
+    const isCurrent = !isTerm && s === curStage;
+    const isStop = isTerm && i === curIdx;          // 终止在这一步
+    const isPast = curIdx >= 0 && i < curIdx;
+    const sColor = COLORS[s] || '#2B6CFF';
+    let style = '';
+    if (isStop) style = `background:${termColor};border-color:${termColor};box-shadow:0 0 0 2px ${termColor}33;`;
+    else if (isCurrent) style = `background:${sColor};border-color:${sColor};box-shadow:0 0 0 2px ${sColor}33;`;
+    else if (isPast) style = `background:${sColor};border-color:${sColor};`;
+    return `<span class="pm-dot${isCurrent ? ' cur' : ''}${isStop ? ' stop' : ''}" style="${style}"></span>`;
+  }).join('');
+  return `<div class="pmini">
+    <span class="pm-line"></span>
+    <span class="pm-fill" style="width:${curIdx > 0 ? `calc((100% - 8px) * ${curIdx / (STAGES.length - 1)})` : '0'};background:${color};"></span>
+    ${dots}
   </div>`;
 }
 // 集团弹层：先按单位分组，再列出该单位下的各岗位；点任意岗位进它的详情

@@ -353,7 +353,17 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 .g-child-name { font-weight: 600; font-size: 15px; }
 .g-child-sub { color: var(--text2); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-child-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.g-child-date { font-size: 11px; color: var(--text3); }
+.g-child-foot { font-size: 11px; color: var(--text3); margin-top: 5px; }
+/* 岗位行的紧凑流程条：7 个节点只画点与连线，阶段文字省略，窄行也放得下 */
+.pmini { position: relative; display: flex; align-items: center; justify-content: space-between; margin: 9px 2px 0; }
+.pm-line, .pm-fill { position: absolute; top: 50%; height: 2px; border-radius: 2px; }
+.pm-line { left: 4px; right: 4px; margin-top: -1px; background: var(--border); }
+.pm-fill { left: 4px; margin-top: -1px; transition: width .25s ease; }
+.pm-dot {
+  position: relative; z-index: 1; width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--border); box-sizing: border-box;
+}
+.pm-dot.cur, .pm-dot.stop { width: 10px; height: 10px; border-color: #fff; }
 
 .empty { text-align: center; color: var(--text3); padding: 60px 0; font-size: 14px; }
 .empty .big { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
