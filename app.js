@@ -21,7 +21,7 @@ function nextKey(p) { return p + (++uidSeq); }
 // Base 地 / 备注挂在「岗位」上：同一个单位的不同岗位，Base 地和备注可能不一样（如总部岗 vs 外地岗）
 function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '' }; }
 function newUnit() {
-  return { key: nextKey('u'), recId: null, sub: '', base: '', date: todayStr(), remark: '', positions: [newPosition()] };
+  return { key: nextKey('u'), recId: null, sub: '', date: todayStr(), positions: [newPosition()] };
 }
 
 // ---------- 状态 ----------
@@ -802,9 +802,7 @@ function renderEdit() {
       ? [{
           key: nextKey('u'), recId: rec.id,
           sub: rec.sub_unit || (rec.company !== rec.group_name ? rec.company : '') || '',
-          base: rec.base || '',
           date: (rec.stage_dates && rec.stage_dates['投递']) || '',
-          remark: rec.remark || '',
           // 岗位带上原记录 id：保存时这条走 update，本次新增的岗位行走 insert
           positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '', base: rec.base || '', remark: rec.remark || '' }],
         }]
@@ -844,7 +842,7 @@ function renderEdit() {
   updateGroupHint();
 }
 // 单个单位 / 集团投递 模式切换（两套表单字段不同）
-// 集团模式下：投递日在单位卡里填；Base 地 / 备注岗位可单独填、留空回落单位默认值；阶段与各阶段日期区不适用（各条记录在详情里推进）
+// 集团模式下：投递日在单位卡里填；Base 地 / 备注只按岗位填；阶段与各阶段日期区不适用（各条记录在详情里推进）
 function setModeUI(mode) {
   draftMode = mode;
   const isGroup = mode === 'group';
@@ -868,7 +866,7 @@ function setModeUI(mode) {
   }
   updateUnitCount();
 }
-// 集团模式的单位卡：卡头（序号 + 删除）+ 三段（投递信息 / 备注 / 该单位下的岗位）
+// 集团模式的单位卡：卡头（序号 + 删除）+ 两段（投递信息 / 该单位下的岗位）
 function renderUnits() {
   $('#g-rows').innerHTML = draftUnits.map((u, i) => `
     <div class="u-card" data-uk="${u.key}">
@@ -883,27 +881,16 @@ function renderUnits() {
             <span class="fld-label">具体单位 / 分行</span>
             <input class="gr-sub" data-uk="${u.key}" data-gf="sub" placeholder="如 中信银行北京分行" value="${esc(u.sub || '')}">
           </label>
-        </div>
-        <div class="u-sec">
-          <div class="u-sec-title">该单位默认 Base / 备注<span class="u-hint-note">（岗位行未填时以此为准）</span></div>
           <div class="u-line">
-            <label class="fld">
-              <span class="fld-label">默认 Base 地</span>
-              <input class="gr-base" data-uk="${u.key}" data-gf="base" placeholder="选填，如 成都" value="${esc(u.base || '')}">
-            </label>
             <label class="fld date-fld">
               <span class="fld-label">投递日</span>
               <input class="gr-date" type="date" data-uk="${u.key}" data-gf="date" aria-label="投递日期" value="${esc(u.date || '')}">
             </label>
           </div>
-          <label class="fld">
-            <span class="fld-label">默认备注</span>
-            <textarea class="gr-remark" data-uk="${u.key}" data-gf="remark" placeholder="选填（岗位行未填时以此为准）" rows="2">${esc(u.remark || '')}</textarea>
-          </label>
         </div>
         <div class="u-sec">
           <div class="u-sec-title">该单位下的岗位<span class="u-pos-n" data-posn="${u.key}">（${u.positions.length}）</span></div>
-          <div class="p-hint p-hint-sec">每个岗位可单独填 Base 地与备注，留空则沿用上方默认值</div>
+          <div class="p-hint p-hint-sec">Base 地与备注按岗位填写，每个岗位各自独立</div>
           <div class="u-positions p-list" data-posof="${u.key}"></div>
           <button type="button" class="p-add" data-padd="${u.key}">＋ 添加岗位</button>
         </div>
@@ -1227,8 +1214,7 @@ async function doSaveSingleRecord() {
   showView('feed');
 }
 // 集团投递保存：集团名必填；每个单位下的每个岗位展开成一条记录（company=集团名、sub_unit=具体单位）。
-// 投递日按单位填写（不同单位时间线不同）、链接全单共用；Base 地 / 备注岗位可单独填，
-// 岗位留空时回落该单位的默认值；
+// 投递日按单位填写（不同单位时间线不同）、链接全单共用；Base 地 / 备注只按岗位单独填；
 // 岗位带 recId（编辑已有记录）走 update，新增的岗位走 insert
 async function doSaveGroupRecord() {
   const group = $('#f-group').value.trim();
@@ -1253,10 +1239,10 @@ async function doSaveGroupRecord() {
         group_name: group,
         sub_unit: sub || null,
         position: name || null,
-        // 岗位级 Base / 备注优先，留空则跟随该单位卡上的默认值
-        base: normalizeLocation(p.base) || normalizeLocation(u.base) || null,
+        // Base 地 / 备注只按岗位写，单位卡不再有默认值
+        base: normalizeLocation(p.base) || null,
         link,
-        remark: ((p.remark || '').trim() || (u.remark || '').trim()) || null,
+        remark: (p.remark || '').trim() || null,
         stage,
         stage_dates,
         apply_date: stage_dates['投递'] || null,
@@ -1743,7 +1729,7 @@ function bindEvents() {
   // 输入即清除该字段的行内错误
   $('#f-company').addEventListener('input', () => clearError('#f-company', '#err-company'));
   $('#f-group').addEventListener('input', () => clearError('#f-group', '#err-group'));
-  // 集团模式：单位卡（单位名 / 默认 Base / 投递日 / 默认备注）+ 岗位行（各自 Base / 备注）
+  // 集团模式：单位卡（单位名 / 投递日）+ 岗位行（各自 Base / 备注）
   $('#g-rows').addEventListener('input', (e) => {
     const t = e.target;
     const u = findUnit(t.dataset.uk);
