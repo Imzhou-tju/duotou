@@ -202,8 +202,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .bucket-chip.more { color: var(--text2); }
-.u-group-head { font-size: 12px; font-weight: 600; color: var(--text2); margin: 16px 0 8px; }
+.u-group-head { font-size: 12px; font-weight: 600; color: var(--text2); margin: 16px 0 8px; display: flex; align-items: baseline; gap: 6px; }
 .u-group-head:first-child { margin-top: 4px; }
+.u-group-n { font-weight: 400; font-size: 11px; color: var(--text3); }
 
 /* 单个单位 / 集团投递 分段切换 */
 .seg { display: flex; gap: 6px; padding: 4px; background: var(--bg); border-radius: 12px; margin-bottom: 4px; }
@@ -352,6 +353,11 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 .g-child-main { flex: 1; min-width: 0; }
 .g-child-name { font-weight: 600; font-size: 15px; }
 .g-child-sub { color: var(--text2); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 只有一个岗位时，单位名以浅蓝标签并入卡片，替代独立的一层单位标题 */
+.g-child-tag {
+  display: inline-block; background: var(--brand-soft); color: var(--brand);
+  font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 6px;
+}
 .g-child-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .g-child-foot { font-size: 11px; color: var(--text3); margin-top: 5px; }
 /* 岗位行的紧凑流程条：7 个节点只画点与连线，阶段文字省略，窄行也放得下 */

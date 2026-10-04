@@ -1360,15 +1360,20 @@ function closeSheet() {
 // 弹层里的岗位行：岗位名 + Base（可选再带集团）+ 阶段 pill + 该阶段最近日期
 // 弹层里的岗位行：紧凑进度条（只画节点与连线，不写阶段文字，窄行才放得下）
 // + 「当前阶段（日期）· 更新于」，和列表单卡的 rec-foot 同一套信息
-function posRowHTML(r, showGroup) {
+// unitTag：只有 1 个岗位时把单位名并进卡片，省掉一层「单位标题 + 卡片」的重复结构
+function posRowHTML(r, showGroup, unitTag) {
   const rc = COLORS[r.stage] || '#9AA0A6';
   const latest = r.stage_dates && r.stage_dates[r.stage];
-  const detail = [normalizeLocation(r.base), showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
+  const normBase = normalizeLocation(r.base);
+  const city = shortCity(normBase);
+  // 单位名里已经带了 Base 所在城市（如「深圳分公司」+「广东省深圳市」）就不再重复显示
+  const showBase = !(unitTag && city && unitTag.includes(city));
+  const detail = [showBase ? normBase : '', showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
   const stageDateText = latest ? `（${esc(latest)}）` : '';
   return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0">
     <div class="g-child-main">
       <div class="g-child-name">${esc(r.position || '未填岗位')}${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
-      ${detail ? `<div class="g-child-sub">${detail}</div>` : ''}
+      ${(unitTag || detail) ? `<div class="g-child-sub">${unitTag ? `<span class="g-child-tag">${esc(unitTag)}</span>` : ''}${detail}</div>` : ''}
       ${pipelineMiniHTML(r)}
       <div class="g-child-foot">当前：<strong style="color:${rc}">${esc(r.stage)}</strong>${stageDateText} · 更新于 ${relTime(r.update_time) || '—'}</div>
     </div>
@@ -1376,6 +1381,12 @@ function posRowHTML(r, showGroup) {
       <span class="pill" style="background:${rc}">${esc(r.stage)}</span>
     </div>
   </div>`;
+}
+// 「广东省深圳市」→ 「深圳」，用于判断单位名里是否已含该城市
+function shortCity(base) {
+  const s = String(base || '');
+  const afterProv = s.includes('省') ? s.split('省').pop() : s;
+  return afterProv.replace(/市$/, '');
 }
 // 紧凑版流程条：与 pipelineHTML 同一套节点/连线算法，去掉阶段文字
 function pipelineMiniHTML(rec) {
@@ -1420,8 +1431,14 @@ function openGroupSheet(groupName) {
   }
   let inner = '';
   for (const [, urs] of byUnit) {
-    inner += `<div class="u-group-head">${esc(unitLabel(urs))}</div>`;
-    inner += urs.map(r => posRowHTML(r, false)).join('');
+    const label = unitLabel(urs);
+    // 一个单位下只有 1 个岗位时不再单独起标题（标题 + 卡片两层是重复结构），单位名并进卡片
+    if (urs.length > 1) {
+      inner += `<div class="u-group-head">${esc(label)}<span class="u-group-n">${urs.length} 个岗位</span></div>`
+        + urs.map(r => posRowHTML(r, false, '')).join('');
+    } else {
+      inner += posRowHTML(urs[0], false, label);
+    }
   }
   $('#sheet-body').innerHTML = `
     <div class="sheet-top">
