@@ -556,16 +556,14 @@ function renderDatalists() {
       .slice(0, 80);
     el.innerHTML = list.map(([v]) => `<option value="${esc(v)}">`).join('');
   };
-  const companies = countMap(), subs = countMap(), positions = countMap(), bases = countMap();
+  const companies = countMap(), positions = countMap(), bases = countMap();
   for (const r of records) {
     tally(companies, r.company);
-    tally(subs, r.sub_unit);
     tally(positions, r.position);
     const b = normalizeLocation(r.base);
     if (b) tally(bases, b);
   }
   fill('#company-list', companies);
-  fill('#sub-list', subs);
   fill('#position-list', positions);
   fill('#base-list', bases);
 }
@@ -904,7 +902,6 @@ function renderEdit() {
   $('#f-group-single').value = singleTagged ? initGroup : (draftMode === 'single' ? initGroup : '');
   $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
   $('#f-company').value = rec ? rec.company : '';
-  $('#f-sub').value = rec ? (rec.sub_unit || '') : '';
   // 批量粘贴入口复位
   setBatchMode(false);
   $('#f-link').value = rec ? (rec.link || '') : '';
@@ -1267,13 +1264,14 @@ function collectForm() {
     if (v) stage_dates[s] = v;
   }
   const derived = stageFromDates(stage_dates);
-  // Base 地 / 备注按岗位走：collectForm 只管整单共用的字段（单位 / 二级单位 / 集团 / 链接 / 阶段 / 日期）
+  // Base 地 / 岗位描述按岗位走：collectForm 只管整单共用的字段（单位 / 集团 / 链接 / 阶段 / 日期）。
+  // 单个单位模式不再写 sub_unit（该字段只由集团投递模式的单位行填充）——
+  // 不在这里带 sub_unit，编辑已有记录时也就不会把历史值清空。
   return {
     company: $('#f-company').value.trim(),
     group_name: draftMode === 'group'
       ? ($('#f-group').value.trim() || null)
       : ($('#f-group-single').value.trim() || null),
-    sub_unit: $('#f-sub').value.trim() || null,
     link: $('#f-link').value.trim() || null,
     stage: derived || draftStage || '投递',
     stage_dates,
