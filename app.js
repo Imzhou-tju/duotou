@@ -265,28 +265,79 @@ function matchCity(str) {
   return '';
 }
 
+// 多地点分隔符：中英文逗号、顿号、斜杠、竖线、&、连接词（和 / 或 / 与 / 及），以及空白
+const MULTI_BASE_SPLIT = /[/,，、|&;；]+|\s*[和或与及]\s*|\s+/;
+// 归一后拼接用的分隔符（必须本身就在上面的分隔符集合里，保证再归一一次结果不变 = 幂等）
+const MULTI_BASE_JOIN = '、';
+
+// 「省 + 市」两截写法（福建 莆田 / 福建-莆田），认不出来返回 ''
+function matchProvCityPair(a, b) {
+  const prov = PROV_ALIAS[a];
+  if (!prov) return '';
+  const cb = matchCity(b);
+  if (DIRECT_MUNICIPALITIES.includes(prov)) {
+    // 直辖市 + 区名 → 直辖市（如「上海 浦东」「北京 海淀」）。
+    // 后半截是别的城市（「北京 上海」）或根本认不出（「北京 远程」）都不能算这一对，交给多地点处理。
+    return cb === prov ? prov : '';
+  }
+  return cb && cb.startsWith(prov) ? cb : '';                 // 市确实属于这个省才算命中
+}
+
+// 单段地名的归一化，认不出来返回 ''
+function normalizeSingle(s) {
+  const parts = s.split(/[\s\-—–·]+/).filter(Boolean);
+  if (parts.length === 2) {
+    const pair = matchProvCityPair(parts[0], parts[1]) || matchProvCityPair(parts[1], parts[0]);
+    if (pair) return pair;
+    // 两截指向同一个城市 → 是「城市 + 片区」写法（如「成都 天府新区」「杭州 滨江」）
+    const ca = matchCity(parts[0]), cb = matchCity(parts[1]);
+    if (ca && ca === cb) return ca;
+    return '';                                                // 两截都是城市 → 交给上层当多地点处理
+  }
+  return matchCity(s) || '';
+}
+
+// 这一段的归一结果本身就是一个完整城市名时才算「独立地点」。
+// 用来区分两类写法：「雄安新区」→「河北省雄安新区」去掉省名后仍是自己 → 独立地点；
+// 「朝阳区」→「辽宁省朝阳市」只是被子串带偏了 → 不是独立地点，应归属到前面的城市。
+function cityLevelOf(seg) {
+  const v = normalizeSingle(seg);
+  if (!v) return '';
+  const short = v.includes('省') ? v.split('省').pop() : v;
+  return (short === seg || short === seg + '市') ? v : '';
+}
+
+// 这一段是不是属于某个城市的次级地名（区 / 县 / 旗 / 片区）
+function isSubPlaceOf(seg, city) {
+  if (/[区县旗]$/.test(seg)) return true;
+  for (const k of ALL_DISTRICT_KEYS) if (DISTRICT_ALIAS[k] === city && seg.includes(k)) return true;
+  return false;
+}
+
 function normalizeLocation(raw) {
   if (!raw || typeof raw !== 'string') return '';
   const s = raw.trim();
   if (!s) return '';
-  // 多地点写法（成都/深圳、成都、深圳）不做归一化，原样保留
-  if (/[/,，、|&]/.test(s)) return s;
-  // 「福建 莆田」「福建-莆田」「福建·莆田」这类「省 + 市」写法
-  const parts = s.split(/[\s\-—–·]+/).filter(Boolean);
-  if (parts.length === 2) {
-    for (const [a, b] of [[parts[0], parts[1]], [parts[1], parts[0]]]) {
-      const prov = PROV_ALIAS[a];
-      if (!prov) continue;
-      if (DIRECT_MUNICIPALITIES.includes(prov)) return prov;   // 直辖市 + 区名 → 直辖市
-      const city = matchCity(b);
-      if (city && city.startsWith(prov)) return city;          // 市必须确实属于这个省
-    }
-    // 两截指向同一个城市 → 那就是「城市 + 小区 / 片区」，不是多地点（如「成都 天府新区」「杭州 滨江」）
-    const ca = matchCity(parts[0]), cb = matchCity(parts[1]);
+  const segs = s.split(MULTI_BASE_SPLIT).map(x => x.trim()).filter(Boolean);
+  if (segs.length < 2) return normalizeSingle(s) || s;
+  // 恰好两截时，先试试能不能合并理解：「省 + 市」或「城市 + 片区」，合成不了才是真的多地点
+  if (segs.length === 2) {
+    const pair = matchProvCityPair(segs[0], segs[1]) || matchProvCityPair(segs[1], segs[0]);
+    if (pair) return pair;
+    const ca = matchCity(segs[0]), cb = matchCity(segs[1]);
     if (ca && ca === cb) return ca;
-    return s;   // 两个都是城市（如「成都 深圳」）→ 视为多地点
   }
-  return matchCity(s) || s;
+  // 多地点：逐段归一后去重拼回；出现既认不出、又无法归属到前一段城市的段 → 整条原样保留
+  const out = [];
+  for (const seg of segs) {
+    const own = cityLevelOf(seg);
+    if (own) { if (!out.includes(own)) out.push(own); continue; }
+    const prev = out[out.length - 1];
+    if (prev && isSubPlaceOf(seg, prev)) continue;   // 「北京 朝阳区」「石家庄 裕华区」
+    return s;
+  }
+  if (!out.length) return s;
+  return out.length === 1 ? out[0] : out.join(MULTI_BASE_JOIN);
 }
 
 // ---------- 备注图片：压缩 / 上传 / 删除 ----------
@@ -656,7 +707,8 @@ function renderDatalists() {
     tally(companies, r.company);
     tally(positions, r.position);
     const b = normalizeLocation(r.base);
-    if (b) tally(bases, b);
+    // 多地点拆开分别计数，列表里才能提示到单个城市
+    if (b) for (const part of String(b).split(MULTI_BASE_JOIN)) tally(bases, part.trim());
   }
   fill('#company-list', companies);
   fill('#position-list', positions);
@@ -1118,7 +1170,7 @@ function renderPositions(unit, container) {
         <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
                placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
         <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
-               placeholder="Base 地，如 成都" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
+               placeholder="Base 地，如 成都 / 石家庄、雄安新区" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
         <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
                 ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
       </div>
@@ -1728,7 +1780,8 @@ function posRowHTML(r, showGroup, unitTag) {
 }
 // 「广东省深圳市」→ 「深圳」，用于判断单位名里是否已含该城市
 function shortCity(base) {
-  const s = String(base || '');
+  // 多地点写法取第一段，否则整段参与匹配永远命中不了
+  const s = String(base || '').split(/[、,，\/|]/)[0].trim();
   const afterProv = s.includes('省') ? s.split('省').pop() : s;
   return afterProv.replace(/市$/, '');
 }
