@@ -727,8 +727,8 @@ function listEmptyHTML(kind) {
 // ---------- 首页 ----------
 function renderFeed() {
   const err = loadState === 'error';
-  // 统计条按阶段计数：已投递 / 一面 / 二面 / Offer（未过=拒绝/放弃不上统计条）
-  const sent = records.filter(r => r.stage === '投递').length;
+  // 统计条：已投递 = 全部投递记录数（每条都算投过）；一面/二面/Offer 按该阶段计数（拒绝/放弃不上统计条）
+  const sent = records.length;
   const int1 = records.filter(r => r.stage === '一面').length;
   const int2 = records.filter(r => r.stage === '二面').length;
   const offers = records.filter(r => r.stage === 'Offer').length;
