@@ -909,7 +909,7 @@ function renderEdit() {
     : (rec ? {} : { '投递': todayStr() });   // 新增时默认「投递」日为今天
   draftStage = stageFromDates(draftDates) || (rec ? rec.stage : '投递');
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
-    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}" role="button" tabindex="0">${s}</span>`).join('');
+    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] + ';color:#fff' : ''}" role="button" tabindex="0">${s}</span>`).join('');
   renderDateRows();
   // 每次进入编辑页都把行内错误与日期折叠区复位
   clearAllErrors();
@@ -2107,7 +2107,7 @@ function bindEvents() {
 // 切阶段时只刷新 chips
 function renderEditStagesOnly() {
   $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
-    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] : ''}" role="button" tabindex="0">${s}</span>`).join('');
+    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] + ';color:#fff' : ''}" role="button" tabindex="0">${s}</span>`).join('');
 }
 
 // ---------- 启动 ----------

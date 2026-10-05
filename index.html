@@ -14,14 +14,42 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261005-7" data-app>
-<link rel="stylesheet" href="style.css?v=20261005-7">
+<link rel="preload" as="script" href="app.js?v=20261005-8" data-app>
+<link rel="stylesheet" href="style.css?v=20261005-8">
+<script>
+/* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
+   切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
+   且不依赖 app.js 是否已加载完。选择存 localStorage（key: duotou-theme），跟随系统不做，
+   只认用户显式点过的那一档。 */
+(function () {
+  var DARK_META = '#0B0C08', LIGHT_META = '#2B6CFF';
+  function current() { return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; }
+  function apply(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('duotou-theme', t); } catch (e) {}
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'dark' ? DARK_META : LIGHT_META);
+  }
+  try { if (localStorage.getItem('duotou-theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+  if (current() === 'dark') {
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', DARK_META);
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('.theme-toggle')) apply(current() === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>
 </head>
 <body>
 
 <!-- 登录 -->
 <div id="view-auth" class="auth-wrap hidden">
   <div class="auth-card">
+    <button type="button" class="theme-toggle" aria-label="切换深色 / 浅色模式">
+      <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.35 5.35l1.5 1.5M17.15 17.15l1.5 1.5M18.65 5.35l-1.5 1.5M6.85 17.15l-1.5 1.5"/></svg>
+      <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.3A8.5 8.5 0 1 1 10.7 3.4a6.9 6.9 0 0 0 9.9 9.9z"/></svg>
+    </button>
     <div class="logo">多投</div>
     <div class="sub">秋招投递记录 · 云端同步</div>
     <input id="auth-email" type="email" placeholder="邮箱" autocomplete="email">
@@ -38,6 +66,10 @@
   <header class="topbar">
     <div class="brand">多投</div>
     <div class="spacer"></div>
+    <button type="button" class="theme-toggle" aria-label="切换深色 / 浅色模式">
+      <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.35 5.35l1.5 1.5M17.15 17.15l1.5 1.5M18.65 5.35l-1.5 1.5M6.85 17.15l-1.5 1.5"/></svg>
+      <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.3A8.5 8.5 0 1 1 10.7 3.4a6.9 6.9 0 0 0 9.9 9.9z"/></svg>
+    </button>
     <span id="user-email" class="user-email"></span>
   </header>
 
@@ -211,6 +243,10 @@
 <!-- 启动兜底：SDK / 主脚本加载不出来时，这里给出可重试的提示，而不是留一片白屏 -->
 <div id="view-boot" class="auth-wrap">
   <div class="auth-card">
+    <button type="button" class="theme-toggle" aria-label="切换深色 / 浅色模式">
+      <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.35 5.35l1.5 1.5M17.15 17.15l1.5 1.5M18.65 5.35l-1.5 1.5M6.85 17.15l-1.5 1.5"/></svg>
+      <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.3A8.5 8.5 0 1 1 10.7 3.4a6.9 6.9 0 0 0 9.9 9.9z"/></svg>
+    </button>
     <div class="logo">多投</div>
     <div id="boot-msg" class="sub">正在加载…</div>
     <button id="btn-retry" class="btn primary block hidden">重新加载</button>
