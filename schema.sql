@@ -40,3 +40,35 @@ create index if not exists idx_applications_update  on public.applications(updat
 
 -- 已部署的旧表补列（首次新建表时上面 create table 已含该列，此句幂等，可反复执行）：
 alter table public.applications add column if not exists group_name text;
+
+-- ============================================================
+-- 备注图片：从 2026-10-05 起需要执行下面这一段（建存储桶 + 权限 + 加列）
+-- 在 Supabase SQL Editor 里单独执行一次即可，幂等，可反复执行。
+--   1) 建公开桶 remark-media：图片本身要能直接展示，所以桶设为 public；
+--      但「谁能写 / 谁能删」由下面两条 storage.objects 策略按 owner_id 目录限制。
+--   2) 图片路径统一放在 {用户id}/ 下，策略据此判断归属，跨用户互相看不到也改不了。
+--   3) applications.remark_images 存 JSONB 数组，形如
+--      [{"path":"<uid>/xxx.jpg","url":"https://.../remark-media/<uid>/xxx.jpg"}]
+--      存 path 而不是只存 URL，是为了让「删记录时同步删文件」能拿到对象路径。
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('remark-media', 'remark-media', true)
+on conflict (id) do nothing;
+
+drop policy if exists "remark-media own insert" on storage.objects;
+drop policy if exists "remark-media own delete" on storage.objects;
+
+-- 只有图片路径的第一段等于自己 user id 时，才允许写入 / 删除
+create policy "remark-media own insert" on storage.objects
+  for insert with check (
+    bucket_id = 'remark-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "remark-media own delete" on storage.objects
+  for delete using (
+    bucket_id = 'remark-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+alter table public.applications add column if not exists remark_images jsonb not null default '[]'::jsonb;

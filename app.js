@@ -16,10 +16,16 @@ const COLORS = {
 const MAX_POSITIONS = 10;   // 单个单位最多岗位数
 const MAX_UNITS = 20;       // 集团模式最多单位数
 const MAX_RECORDS = 60;     // 单次提交最多记录数
+// 备注图片：Supabase Storage 公开桶，路径固定 {user.id}/xxx，权限由 storage.objects 策略按目录限制
+const IMG_BUCKET = 'remark-media';
+const IMG_MAX_EDGE = 1600;      // 压缩后长边上限（px）
+const IMG_MAX_EDGE_PNG = 2400;  // 截图类 PNG 文字多，放宽一点避免字糊
+const MAX_IMGS_PER_POS = 4;     // 单个岗位最多几张
+const MAX_IMG_INPUT_MB = 12;    // 选图时的原始体积上限
 let uidSeq = 0;
 function nextKey(p) { return p + (++uidSeq); }
 // Base 地 / 备注挂在「岗位」上：同一个单位的不同岗位，Base 地和备注可能不一样（如总部岗 vs 外地岗）
-function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '' }; }
+function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '', imgs: [] }; }
 function newUnit() {
   return { key: nextKey('u'), recId: null, sub: '', date: todayStr(), positions: [newPosition()] };
 }
@@ -186,6 +192,79 @@ function normalizeLocation(raw) {
     return s;   // 两个都是城市（如「成都 深圳」）→ 视为多地点
   }
   return matchCity(s) || s;
+}
+
+// ---------- 备注图片：压缩 / 上传 / 删除 ----------
+// 浏览器里先压缩再上传：手机截图动辄 2–5MB，直接传很快会撑爆免费额度。
+// 截图（PNG）文字密集，压缩目标放宽、保留 PNG；照片走 JPEG。
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) { reject(new Error('只能选图片文件')); return; }
+    if (file.size > MAX_IMG_INPUT_MB * 1024 * 1024) { reject(new Error(`图片超过 ${MAX_IMG_INPUT_MB}MB，先截小一点`)); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const keepPng = /png/i.test(file.type);
+      const maxEdge = keepPng ? IMG_MAX_EDGE_PNG : IMG_MAX_EDGE;
+      let { width: w, height: h } = img;
+      if (!w || !h) { reject(new Error('图片读取失败')); return; }
+      const scale = Math.min(1, maxEdge / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale));
+      h = Math.max(1, Math.round(h * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff';            // PNG 转 JPEG 时透明区会变黑，先铺白底
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const outType = keepPng ? 'image/png' : 'image/jpeg';
+      cv.toBlob((blob) => {
+        if (!blob) { reject(new Error('图片压缩失败')); return; }
+        const ext = keepPng ? 'png' : 'jpg';
+        resolve({ blob, ext, width: w, height: h });
+      }, outType, keepPng ? undefined : 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片读取失败')); };
+    img.src = url;
+  });
+}
+function imgObjectName(ext) {
+  const rand = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+    ? [...crypto.getRandomValues(new Uint8Array(6))].map(b => b.toString(16).padStart(2, '0')).join('')
+    : Math.random().toString(16).slice(2, 14);
+  return `${user.id}/${Date.now()}-${rand}.${ext}`;
+}
+// 传完拿回 { path, url }：path 留着给「删记录时同步删文件」用
+async function uploadImage(file) {
+  const { blob, ext, width, height } = await compressImage(file);
+  const path = imgObjectName(ext);
+  const { error } = await sb.storage.from(IMG_BUCKET).upload(path, blob, {
+    contentType: blob.type, upsert: false,
+  });
+  if (error) throw new Error(error.message || '上传失败');
+  const { data } = sb.storage.from(IMG_BUCKET).getPublicUrl(path);
+  return { path, url: data.publicUrl, w: width, h: height, size: blob.size };
+}
+function publicUrlOf(path) {
+  if (!path) return '';
+  try { return sb.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl; } catch (e) { return ''; }
+}
+// 删记录 / 删图片时清存储桶。失败只提示，不阻断主流程（记录已经删掉了，图片属于残留）
+async function removeImageFiles(paths) {
+  const list = [...new Set((paths || []).filter(Boolean))];
+  if (!list.length) return;
+  const { error } = await sb.storage.from(IMG_BUCKET).remove(list);
+  if (error) toast('图片文件清理失败：' + error.message, 'error');
+}
+// 保存成功后清理被移除的图片：原记录里有、这次表单里没有的，文件一并删掉，避免留孤儿文件
+async function removeStaleImages(beforePaths, imgsNow) {
+  const keep = new Set((imgsNow || []).map(x => x && x.path).filter(Boolean));
+  const gone = (beforePaths || []).filter(p => p && !keep.has(p));
+  if (gone.length) await removeImageFiles(gone);
+}
+function imgsOf(rec) {
+  return Array.isArray(rec && rec.remark_images) ? rec.remark_images.filter(x => x && x.path) : [];
 }
 
 // 自然语言日期解析
@@ -804,7 +883,7 @@ function renderEdit() {
           sub: rec.sub_unit || (rec.company !== rec.group_name ? rec.company : '') || '',
           date: (rec.stage_dates && rec.stage_dates['投递']) || '',
           // 岗位带上原记录 id：保存时这条走 update，本次新增的岗位行走 insert
-          positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '', base: rec.base || '', remark: rec.remark || '' }],
+          positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '', base: rec.base || '', remark: rec.remark || '', imgs: imgsOf(rec) }],
         }]
       : [newUnit()];
     // 编辑已有记录：保留其原有各阶段日期，保存时与行内投递日期合并；新增则从空开始
@@ -814,7 +893,7 @@ function renderEdit() {
     // 单个单位模式：单位 / 链接 / 日期在外层共用字段上；Base / 备注挂在岗位行里，这里只需要装岗位
     draftUnits = [{
       key: nextKey('u'), recId: rec ? rec.id : null,
-      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '' }],
+      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '', imgs: rec ? imgsOf(rec) : [] }],
     }];
     groupEditStageDates = null;
     groupEditStage = '投递';
@@ -919,6 +998,7 @@ function renderPositions(unit, container) {
         <input class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" maxlength="120"
                placeholder="备注，如 邮箱投的 / 内推" aria-label="岗位 ${i + 1} 的备注" value="${esc(p.remark || '')}">
       </div>
+      ${imgStripHTML(unit, p, i)}
     </div>`).join('');
   const addBtn = draftMode === 'single' ? $('#p-add-single') : $(`.p-add[data-padd="${unit.key}"]`);
   if (addBtn) {
@@ -933,6 +1013,109 @@ function renderPositions(unit, container) {
   updateUnitCount();
 }
 function findUnit(key) { return draftUnits.find(u => u.key === key); }
+// 岗位行图片的点击分发：添加 / 删除 / 点开预览。两个岗位区共用。
+function handleImgClick(e) {
+  const add = e.target.closest('[data-imgadd]');
+  if (add) { pickAndUploadImages(add.dataset.uk, add.dataset.pk); return true; }
+  const del = e.target.closest('[data-imgdel]');
+  if (del) { removePositionImage(del.dataset.uk, del.dataset.pk, Number(del.dataset.imgdel)); return true; }
+  const img = e.target.closest('[data-preview]');
+  if (img) { openImageViewer(img.dataset.preview); return true; }
+  return false;
+}
+// 选图 → 逐张压缩上传。文件选择框按岗位缓存，第二次点同一个岗位时接着用
+let imgPicker = null;
+// 选图 → 逐张压缩上传。文件选择框全局一个，按岗位记录当前属于谁
+function ensureImagePicker() {
+  if (imgPicker) return imgPicker;
+  imgPicker = document.createElement('input');
+  imgPicker.type = 'file';
+  imgPicker.accept = 'image/*';
+  imgPicker.multiple = true;
+  imgPicker.style.display = 'none';
+  document.body.appendChild(imgPicker);
+  // change 不冒泡，挂在 input 自身上
+  imgPicker.addEventListener('change', () => {
+    const files = imgPicker.files;
+    if (!files || !files.length) return;
+    const { uk, pk } = imgPicker.dataset;
+    uploadPickedImages(files, uk, pk);
+  });
+  return imgPicker;
+}
+function pickAndUploadImages(uk, pk) {
+  const u = findUnit(uk);
+  const p = u && u.positions.find(x => x.key === pk);
+  if (!p) return;
+  const picker = ensureImagePicker();
+  picker.dataset.uk = uk;
+  picker.dataset.pk = pk;
+  picker.value = '';        // 允许连续选同一张
+  picker.click();
+}
+async function uploadPickedImages(files, uk, pk) {
+  const u = findUnit(uk);
+  const p = u && u.positions.find(x => x.key === pk);
+  if (!p) return;
+  p.imgs = p.imgs || [];
+  const room = MAX_IMGS_PER_POS - p.imgs.length;
+  if (room <= 0) { toast(`每个岗位最多 ${MAX_IMGS_PER_POS} 张图片`, 'error'); return; }
+  const list = [...files].slice(0, room);
+  if (files.length > room) toast(`超过上限，只上传前 ${room} 张`, 'error');
+  toast(`正在上传 0 / ${list.length}…`);
+  let done = 0, failed = 0;
+  for (const f of list) {
+    try {
+      const im = await uploadImage(f);
+      p.imgs.push(im);
+      done++;
+    } catch (err) { failed++; toast(String(err.message || err), 'error'); }
+    toast(`正在上传 ${done + failed} / ${list.length}…`);
+  }
+  renderPositions(u, $(draftMode === 'single' ? '#single-positions' : `.u-positions[data-posof="${uk}"]`));
+  if (done) toast(`已上传 ${done} 张图片`, 'success');
+  if (done + failed === list.length && failed) toast(`${failed} 张上传失败`, 'error');
+}
+// 移除一张：先改内存，保存时若这条记录是 update，会把「原来有、现在没了」的文件删掉
+function removePositionImage(uk, pk, idx) {
+  const u = findUnit(uk);
+  const p = u && u.positions.find(x => x.key === pk);
+  if (!p || !p.imgs || !p.imgs[idx]) return;
+  p.imgs.splice(idx, 1);
+  renderPositions(u, $(draftMode === 'single' ? '#single-positions' : `.u-positions[data-posof="${uk}"]`));
+}
+// 点开看大图：详情弹层里复用同一个 viewer
+let imgViewer = null;
+function openImageViewer(src) {
+  if (!src) return;
+  if (!imgViewer) {
+    imgViewer = document.createElement('div');
+    imgViewer.className = 'img-viewer';
+    imgViewer.innerHTML = '<img alt="备注图片"><button type="button" class="iv-x" aria-label="关闭">×</button>';
+    document.body.appendChild(imgViewer);
+    imgViewer.addEventListener('click', (e) => {
+      if (e.target === imgViewer || e.target.closest('.iv-x')) closeImageViewer();
+    });
+  }
+  imgViewer.querySelector('img').src = src;
+  imgViewer.classList.remove('hidden');
+}
+function closeImageViewer() { if (imgViewer) imgViewer.classList.add('hidden'); }
+function imgStripHTML(unit, p, i) {
+  const imgs = p.imgs || [];
+  const full = imgs.length >= MAX_IMGS_PER_POS;
+  return `<div class="p-imgs">
+    ${imgs.map((im, k) => `<span class="p-img">
+      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="备注图片 ${k + 1}" loading="lazy"
+           data-preview="${esc(im.url || publicUrlOf(im.path))}">
+      <button type="button" class="p-img-x" data-uk="${unit.key}" data-pk="${p.key}" data-imgdel="${k}"
+              aria-label="删除这张图片">×</button>
+    </span>`).join('')}
+    ${full ? '' : `<button type="button" class="p-img-add" data-uk="${unit.key}" data-pk="${p.key}" data-imgadd="1"
+       aria-label="给岗位 ${i + 1} 添加备注图片">＋ 图</button>`}
+    ${imgs.length ? `<span class="p-img-tip">${imgs.length}/${MAX_IMGS_PER_POS}</span>` : ''}
+  </div>`;
+}
 // 添加岗位：达上限置灰，重名拦截并把焦点移到已存在的那一行
 function addPosition(unitKey) {
   const u = findUnit(unitKey); if (!u) return;
@@ -1168,6 +1351,7 @@ async function saveRecord() {
 // 单个单位保存：岗位列表展开成多条；第一条（若已存在）走 update，其余 insert
 async function doSaveSingleRecord() {
   setBatchMode(false, { merge: true });   // 批量粘贴框还开着就先并入，避免内容没进列表就被保存掉
+  const beforeImgs = editingId ? imgsOf(records.find(r => r.id === editingId)).map(x => x.path) : [];
   const base = collectForm();
   if (!base.company) { failField('#f-company', '#err-company', '请填写单位名称'); return; }
   const u = draftUnits[0] || newUnit();
@@ -1185,25 +1369,27 @@ async function doSaveSingleRecord() {
       name: name || null,
       base: normalizeLocation(p.base || '') || null,
       remark: (p.remark || '').trim() || null,
+      imgs: p.imgs || [],
     });
   }
-  if (!list.length) list.push({ name: null, base: null, remark: null });
+  if (!list.length) list.push({ name: null, base: null, remark: null, imgs: [] });
   if (list.length > MAX_RECORDS) { toast(`一次最多提交 ${MAX_RECORDS} 条投递，请分批添加`); return; }
   let error = null, n = 0;
   if (editingId) {
     const first = list[0];
-    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark }).eq('id', editingId);
+    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark, remark_images: first.imgs }).eq('id', editingId);
     error = r.error; n = 1;
     const rest = list.slice(1);
     if (!error && rest.length) {
-      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark })));
+      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs })));
       error = r2.error; n += rest.length;
     }
   } else {
-    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark })));
+    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs })));
     error = r.error; n = list.length;
   }
   if (error) { toast('保存失败：' + error.message, 'error'); return; }
+  if (editingId) await removeStaleImages(beforeImgs, list[0] && list[0].imgs);
   const gName = base.group_name;
   toast(gName
     ? (n > 1 ? `已添加 ${n} 条投递，归入「${gName}」` : `已保存，归入「${gName}」`)
@@ -1217,6 +1403,10 @@ async function doSaveSingleRecord() {
 // 投递日按单位填写（不同单位时间线不同）、链接全单共用；Base 地 / 备注只按岗位单独填；
 // 岗位带 recId（编辑已有记录）走 update，新增的岗位走 insert
 async function doSaveGroupRecord() {
+  const beforeImgs = new Map();
+  for (const u of draftUnits) for (const p of u.positions || []) {
+    if (p.recId) beforeImgs.set(p.recId, imgsOf(records.find(r => r.id === p.recId)).map(x => x.path));
+  }
   const group = $('#f-group').value.trim();
   if (!group) { failField('#f-group', '#err-group', '请填写集团名称'); return; }
   const link = $('#f-link').value.trim() || null;
@@ -1243,6 +1433,7 @@ async function doSaveGroupRecord() {
         base: normalizeLocation(p.base) || null,
         link,
         remark: (p.remark || '').trim() || null,
+        remark_images: p.imgs || [],
         stage,
         stage_dates,
         apply_date: stage_dates['投递'] || null,
@@ -1275,6 +1466,10 @@ async function doSaveGroupRecord() {
     if (r.error) error = r.error;
   }
   if (error) { toast('保存失败：' + error.message, 'error'); return; }
+  for (const p2 of updates) {
+    const before = beforeImgs.get(p2.id) || [];
+    await removeStaleImages(before, p2.remark_images);
+  }
   toast(editingId ? '已保存' : (payload.length > 1 ? `已添加 ${payload.length} 条投递` : '已保存'), 'success');
   editingId = null;
   draftGroup = '';
@@ -1283,7 +1478,7 @@ async function doSaveGroupRecord() {
 }
 // 删除后给一次后悔机会：删之前把行内容留一份快照，撤销时原样写回。
 // 不复用原 id（id 是 identity 列，显式写入会报错），但 update_time 一并带回去，排序位置不变。
-const WRITE_FIELDS = ['company','group_name','base','sub_unit','position','link','remark',
+const WRITE_FIELDS = ['company','group_name','base','sub_unit','position','link','remark','remark_images',
   'stage','stage_dates','apply_date','update_time'];
 let lastDeleted = null;
 
@@ -1294,6 +1489,8 @@ async function deleteRecord(id) {
   if (!confirm('确定删除这条投递记录？')) return;
   const { error } = await sb.from('applications').delete().eq('id', id);
   if (error) { toast('删除失败：' + error.message, 'error'); return; }
+  // 记录已删，图片留着就是孤儿文件，跟着删（失败只提示，不影响撤销）
+  await removeImageFiles(imgsOf(row).map(x => x.path));
   lastDeleted = row || null;
   toastAction(`已删除「${row ? (row.company || '未命名') : ''}」`, '撤销', restoreDeleted, 6000);
   editingId = null;
@@ -1507,6 +1704,17 @@ function renderSheet(id) {
         <div class="sheet-remark-text">${esc(rec.remark)}</div>
       </div>`;
   }
+  // 备注图片：点开看大图（viewer 由 app.js 统一挂在 body 上）
+  const imgs = imgsOf(rec);
+  if (imgs.length) {
+    remarkHTML += `
+      <div class="sheet-field">
+        <div class="sheet-field-label">备注图片（${imgs.length}）</div>
+        <div class="sheet-imgs">${imgs.map((im, k) => `<img class="sheet-img"
+           src="${esc(im.url || publicUrlOf(im.path))}" alt="备注图片 ${k + 1}" loading="lazy"
+           data-preview="${esc(im.url || publicUrlOf(im.path))}">`).join('')}</div>
+      </div>`;
+  }
 
   const dates = ALL_STAGES.map(s => {
     const v = rec.stage_dates && rec.stage_dates[s];
@@ -1667,6 +1875,7 @@ function bindEvents() {
     const addUnder = e.target.closest('[data-addunder]');
     // 集团名必须经 openEditView 的 opts.group 传入；先写 draftGroup 再调用会被 opts.group||'' 清空
     if (addUnder) { openEditView({ mode: 'group', group: addUnder.dataset.addunder }); return; }
+    if (handleImgClick(e)) return;
     const cp = e.target.closest('[data-copylink]');
     if (cp) {
       const text = cp.dataset.copylink;
@@ -1797,6 +2006,7 @@ function bindEvents() {
     if (delP) { removePosition(delP.dataset.uk, delP.dataset.pdel); return; }
     const delU = e.target.closest('[data-udel]');
     if (delU) { removeUnit(delU.dataset.udel); return; }
+    if (handleImgClick(e)) return;
   });
   $('#g-add').addEventListener('click', () => {
     if (draftUnits.length >= MAX_UNITS) { toast(`最多 ${MAX_UNITS} 个单位`); return; }
@@ -1824,7 +2034,8 @@ function bindEvents() {
   }
   $('#single-positions').addEventListener('click', (e) => {
     const delP = e.target.closest('[data-pdel]');
-    if (delP) removePosition(delP.dataset.uk, delP.dataset.pdel);
+    if (delP) { removePosition(delP.dataset.uk, delP.dataset.pdel); return; }
+    handleImgClick(e);
   });
   $('#p-add-single').addEventListener('click', () => addPosition(draftUnits[0].key));
   // 集团名输入时，命中已有集团则提示将自动归并（两处集团名输入都监听）
@@ -1860,6 +2071,7 @@ function bindEvents() {
   // Esc：关弹层；正在批量粘贴时优先收起批量框（此时弹层还没打开）
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (imgViewer && !imgViewer.classList.contains('hidden')) { closeImageViewer(); return; }  // 大图在最上层，先关它
     if (overlayKind) { closeOverlayByBack(); return; }
     const bb = $('#batch-box');
     if (bb && !bb.classList.contains('hidden')) setBatchMode(false, { merge: true });

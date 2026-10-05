@@ -33,7 +33,7 @@
 ### 1. 创建 Supabase 项目
 
 1. 打开 [supabase.com](https://supabase.com/dashboard)，注册并 **New project**。
-2. 进入 **SQL Editor**，把本仓库的 [`schema.sql`](schema.sql) 整段粘贴执行——建表 + 行级安全策略一步到位。
+2. 进入 **SQL Editor**，把本仓库的 [`schema.sql`](schema.sql) 整段粘贴执行——建表 + 行级安全策略一步到位（含备注图片所需的存储桶与 `remark_images` 列；这段是幂等的，重复执行安全）。
 3. 到 **Project Settings → API** 复制两个值：
    - `Project URL`
    - `anon public key`（这是公开设计的 key，数据安全由 RLS 策略保证）
@@ -66,7 +66,7 @@
 
 | 模式 | 适合场景 | 填写内容 |
 | --- | --- | --- |
-| **单个单位** | 普通公司投递 | 单位名称、二级单位、**集团名称（选填，填了自动归并）**、**岗位列表（＋ 添加岗位，可批量粘贴多行；每个岗位各自的 Base 地与备注）**、链接、当前阶段与各阶段日期 |
+| **单个单位** | 普通公司投递 | 单位名称、二级单位、**集团名称（选填，填了自动归并）**、**岗位列表（＋ 添加岗位，可批量粘贴多行；每个岗位各自的 Base 地、备注与备注图片）**、链接、当前阶段与各阶段日期 |
 | **集团投递** | 同一集团多单位/多分行 | 集团名称 + 单位卡列表；每张卡填：具体单位、**默认 Base 地与备注（岗位未填时沿用）**、投递日期，以及**该单位下的岗位列表（每个岗位可单独覆盖 Base 地与备注）**；投递链接全单共用 |
 
 > 两种方式都能归并：投单个单位时顺手填一下「集团名称」，之后同集团的投递会在首页自动聚合成一张集团卡片（≥2 条时合并）；集团名有候选提示，选中已有集团会提示将合并到哪个组。
@@ -107,7 +107,8 @@
 | 前端 | 原生 HTML / CSS / JavaScript，无框架、无构建，单页应用约 1500 行 |
 | 后端 | Supabase（Postgres + Auth + Row Level Security） |
 | 部署 | GitHub Pages 静态托管，PWA 可安装 |
-| 数据 | 单表 `applications`，`stage_dates` 用 JSONB 存各阶段日期，`group_name` 做显示层聚合 |
+| 数据 | 单表 `applications`，`stage_dates` 用 JSONB 存各阶段日期，`group_name` 做显示层聚合，`remark_images` 用 JSONB 存备注图片 |
+| 图片 | Supabase Storage 公开桶 `remark-media`，浏览器端先压缩再上传；写 / 删权限按 `{用户id}/` 目录前缀做 RLS |
 
 ## 📁 目录结构
 
