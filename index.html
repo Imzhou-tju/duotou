@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261005-4" data-app>
-<link rel="stylesheet" href="style.css?v=20261005-4">
+<link rel="preload" as="script" href="app.js?v=20261005-5" data-app>
+<link rel="stylesheet" href="style.css?v=20261005-5">
 </head>
 <body>
 
@@ -148,9 +148,11 @@
         <div class="seg-note" id="mode-note">一个单位，可填多个岗位；每个岗位生成一条记录</div>
         <!-- 单个单位模式 -->
         <div id="single-fields">
-          <div class="form-row col"><span class="f-label req">单位名称</span><input id="f-company" list="company-list" placeholder="如 字节跳动"><div id="err-company" class="field-err hidden"></div></div>
+          <div class="fr2">
+            <div><span class="f-label req">单位名称</span><input id="f-company" list="company-list" placeholder="如 字节跳动"><div id="err-company" class="field-err hidden"></div></div>
+            <div><span class="f-label">集团名称</span><input id="f-group-single" list="group-list" placeholder="选填，填了自动归并"><div id="group-hint-single" class="input-hint hidden"></div></div>
+          </div>
           <div class="form-row"><span class="f-label">二级单位</span><input id="f-sub" list="sub-list" placeholder="选填，如 抖音"></div>
-          <div class="form-row"><span class="f-label">集团名称</span><input id="f-group-single" list="group-list" placeholder="选填，填了自动归并"><div id="group-hint-single" class="input-hint hidden"></div></div>
           <div class="form-row col">
             <div class="sec-head">
               <span class="f-label">岗位</span>
