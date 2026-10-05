@@ -727,13 +727,15 @@ function listEmptyHTML(kind) {
 // ---------- 首页 ----------
 function renderFeed() {
   const err = loadState === 'error';
-  const active = records.filter(r => STAGES.includes(r.stage) && r.stage !== 'Offer').length;
+  // 统计条按阶段计数：已投递 / 一面 / 二面 / Offer（未过=拒绝/放弃不上统计条）
+  const sent = records.filter(r => r.stage === '投递').length;
+  const int1 = records.filter(r => r.stage === '一面').length;
+  const int2 = records.filter(r => r.stage === '二面').length;
   const offers = records.filter(r => r.stage === 'Offer').length;
-  const rejects = records.filter(r => TERMINAL.includes(r.stage)).length;
-  $('#stat-active').textContent = err ? '—' : active;
+  $('#stat-sent').textContent = err ? '—' : sent;
+  $('#stat-int1').textContent = err ? '—' : int1;
+  $('#stat-int2').textContent = err ? '—' : int2;
   $('#stat-offer').textContent = err ? '—' : offers;
-  $('#stat-reject').textContent = err ? '—' : rejects;
-  $('#stat-total').textContent = err ? '—' : records.length;
   $$('#feed-filters .chip').forEach(c => c.classList.toggle('on', c.dataset.filter === feedFilter));
 
   const items = bucketize(feedFiltered());
