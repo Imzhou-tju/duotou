@@ -16,7 +16,7 @@ const COLORS = {
 const MAX_POSITIONS = 10;   // 单个单位最多岗位数
 const MAX_UNITS = 20;       // 集团模式最多单位数
 const MAX_RECORDS = 60;     // 单次提交最多记录数
-// 岗位图片：Supabase Storage 公开桶，路径固定 {user.id}/xxx，权限由 storage.objects 策略按目录限制
+// 岗位附件（存的是图片文件）：Supabase Storage 公开桶，路径固定 {user.id}/xxx，权限由 storage.objects 策略按目录限制
 const IMG_BUCKET = 'remark-media';
 const IMG_MAX_EDGE = 1600;      // 压缩后长边上限（px）
 const IMG_MAX_EDGE_PNG = 2400;  // 截图类 PNG 文字多，放宽一点避免字糊
@@ -1058,9 +1058,9 @@ async function uploadPickedImages(files, uk, pk) {
   if (!p) return;
   p.imgs = p.imgs || [];
   const room = MAX_IMGS_PER_POS - p.imgs.length;
-  if (room <= 0) { toast(`每个岗位最多 ${MAX_IMGS_PER_POS} 张图片`, 'error'); return; }
+  if (room <= 0) { toast(`每个岗位最多 ${MAX_IMGS_PER_POS} 个附件`, 'error'); return; }
   const list = [...files].slice(0, room);
-  if (files.length > room) toast(`超过上限，只上传前 ${room} 张`, 'error');
+  if (files.length > room) toast(`超过上限，只上传前 ${room} 个`, 'error');
   toast(`正在上传 0 / ${list.length}…`);
   let done = 0, failed = 0;
   for (const f of list) {
@@ -1072,8 +1072,8 @@ async function uploadPickedImages(files, uk, pk) {
     toast(`正在上传 ${done + failed} / ${list.length}…`);
   }
   renderPositions(u, $(draftMode === 'single' ? '#single-positions' : `.u-positions[data-posof="${uk}"]`));
-  if (done) toast(`已上传 ${done} 张图片`, 'success');
-  if (done + failed === list.length && failed) toast(`${failed} 张上传失败`, 'error');
+  if (done) toast(`已上传 ${done} 个附件`, 'success');
+  if (done + failed === list.length && failed) toast(`${failed} 个上传失败`, 'error');
 }
 // 移除一张：先改内存，保存时若这条记录是 update，会把「原来有、现在没了」的文件删掉
 function removePositionImage(uk, pk, idx) {
@@ -1090,7 +1090,7 @@ function openImageViewer(src) {
   if (!imgViewer) {
     imgViewer = document.createElement('div');
     imgViewer.className = 'img-viewer';
-    imgViewer.innerHTML = '<img alt="备注图片"><button type="button" class="iv-x" aria-label="关闭">×</button>';
+    imgViewer.innerHTML = '<img alt="附件"><button type="button" class="iv-x" aria-label="关闭">×</button>';
     document.body.appendChild(imgViewer);
     imgViewer.addEventListener('click', (e) => {
       if (e.target === imgViewer || e.target.closest('.iv-x')) closeImageViewer();
@@ -1104,7 +1104,7 @@ function closeImageViewer() { if (imgViewer) imgViewer.classList.add('hidden'); 
 function imgAddBtnHTML(unit, p, i) {
   if ((p.imgs || []).length >= MAX_IMGS_PER_POS) return '';
   return `<button type="button" class="p-img-add" data-uk="${unit.key}" data-pk="${p.key}" data-imgadd="1"
-     title="添加岗位图片" aria-label="给岗位 ${i + 1} 添加岗位图片">
+     title="添加附件" aria-label="给岗位 ${i + 1} 添加附件">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5"/>
@@ -1117,10 +1117,10 @@ function imgStripHTML(unit, p, i) {
   if (!imgs.length) return '';
   return `<div class="p-imgs">
     ${imgs.map((im, k) => `<span class="p-img">
-      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="岗位图片 ${k + 1}" loading="lazy"
+      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="附件 ${k + 1}" loading="lazy"
            data-preview="${esc(im.url || publicUrlOf(im.path))}">
       <button type="button" class="p-img-x" data-uk="${unit.key}" data-pk="${p.key}" data-imgdel="${k}"
-              aria-label="删除这张图片">×</button>
+              aria-label="删除这张附件">×</button>
     </span>`).join('')}
     <span class="p-img-tip">${imgs.length}/${MAX_IMGS_PER_POS}</span>
   </div>`;
@@ -1725,9 +1725,9 @@ function renderSheet(id) {
   if (imgs.length) {
     remarkHTML += `
       <div class="sheet-field">
-        <div class="sheet-field-label">岗位图片（${imgs.length}）</div>
+        <div class="sheet-field-label">岗位附件（${imgs.length}）</div>
         <div class="sheet-imgs">${imgs.map((im, k) => `<img class="sheet-img"
-           src="${esc(im.url || publicUrlOf(im.path))}" alt="岗位图片 ${k + 1}" loading="lazy"
+           src="${esc(im.url || publicUrlOf(im.path))}" alt="附件 ${k + 1}" loading="lazy"
            data-preview="${esc(im.url || publicUrlOf(im.path))}">`).join('')}</div>
       </div>`;
   }
