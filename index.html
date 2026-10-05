@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261005-10" data-app>
-<link rel="stylesheet" href="style.css?v=20261005-10">
+<link rel="preload" as="script" href="app.js?v=20261005-11" data-app>
+<link rel="stylesheet" href="style.css?v=20261005-11">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -98,22 +98,27 @@
 
     <!-- 搜索 -->
     <section id="view-search" class="view hidden">
-      <div class="search-bar"><input id="search-kw" placeholder="搜索 单位 / 岗位 / 描述 / 集团"></div>
-      <div class="card">
-        <div class="f-row"><span class="f-label">阶段</span><div id="search-stages" class="chips"></div></div>
-        <div class="f-row"><span class="f-label">单位</span><input id="search-unit" class="f-input" list="company-list" placeholder="如 中信银行 / 北京分行"></div>
-        <div class="f-row"><span class="f-label">岗位</span><input id="search-position" class="f-input" list="position-list" placeholder="如 后端开发"></div>
-        <div class="f-row"><span class="f-label">Base</span><input id="search-base" class="f-input" list="base-list" placeholder="如 北京"></div>
-        <div class="f-row"><span class="f-label">排序</span>
-          <select id="search-sort" class="f-input">
-            <option value="update">最近更新</option>
-            <option value="apply">投递日期</option>
-            <option value="stage">阶段进度</option>
-          </select>
+      <form id="search-form" class="search-head" role="search">
+        <div class="search-bar">
+          <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search-kw" type="search" autocomplete="off" enterkeyhint="search"
+                 placeholder="搜索 公司 / 岗位 / Base" aria-label="搜索公司、岗位或 Base 地">
+          <button type="button" id="search-kw-clear" class="search-x hidden" aria-label="清空关键词">×</button>
+          <button type="submit" class="search-go">搜索</button>
         </div>
-        <button type="button" id="search-clear" class="link-btn hidden">清空筛选条件</button>
-      </div>
-      <div id="search-count" class="count"></div>
+        <div id="search-stages" class="chips scroll-x"></div>
+        <div class="search-sortbar">
+          <span id="search-count" class="count"></span>
+          <button type="button" id="search-clear" class="link-btn hidden">清空</button>
+          <label class="sort-wrap"><span class="sort-label">排序</span>
+            <select id="search-sort" class="sort-select" aria-label="排序方式">
+              <option value="update">最近更新</option>
+              <option value="apply">投递日期</option>
+              <option value="stage">阶段进度</option>
+            </select>
+          </label>
+        </div>
+      </form>
       <div id="search-list" class="list"></div>
       <button type="button" id="search-more" class="more-btn hidden">加载更多</button>
     </section>

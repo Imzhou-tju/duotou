@@ -368,6 +368,62 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 /* 键盘可达：chip 用的是 span，只给键盘焦点画一圈描边，鼠标点击时不出环 */
 .chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
+/* ---------- 搜索页：单行主搜索框 + 阶段标签（横向滚动不换行）+ 排序 ---------- */
+.search-head { margin: 0 0 14px; }
+.search-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 4px 4px 13px; border-radius: 999px;
+  background: var(--field); border: 1px solid var(--border);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.search-bar:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--ring); }
+.search-ico { width: 18px; height: 18px; flex: 0 0 18px; color: var(--text2); }
+/* 搜索框本体：清掉全局 input 的边框/底色/光环，由外层 .search-bar 统一承担 */
+.search-bar input {
+  flex: 1; min-width: 0; width: auto; padding: 9px 0;
+  border: none; background: none; box-shadow: none; border-radius: 0; font-size: 15px;
+}
+.search-bar input:focus { border: none; box-shadow: none; }
+/* 输入框聚焦时整条胶囊已用描边 + 光环表示焦点，内层再画一圈键盘环会变成「双层框」 */
+.search-bar input:focus-visible { outline: none; }
+/* 原生 search 的清除叉在部分浏览器很丑，统一用自绘的 .search-x */
+.search-bar input::-webkit-search-cancel-button { display: none; }
+.search-x {
+  flex: 0 0 auto; width: 22px; height: 22px; line-height: 1; padding: 0; cursor: pointer;
+  border: none; border-radius: 50%; background: var(--bg); color: var(--text2); font-size: 15px;
+}
+.search-go {
+  flex: 0 0 auto; padding: 9px 18px; border: none; border-radius: 999px; cursor: pointer;
+  background: var(--brand); color: var(--on-brand); font-size: 14px; font-weight: 600;
+}
+.search-go:active { opacity: .85; }
+/* 阶段标签：单行横向滚动，不换行 —— 挂在 .chips 上复用配色，只覆盖换行与溢出手势 */
+.chips.scroll-x {
+  flex-wrap: nowrap; overflow-x: auto; margin-top: 10px; padding-bottom: 2px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.chips.scroll-x::-webkit-scrollbar { display: none; }
+.chips.scroll-x .chip { flex: 0 0 auto; }
+.search-sortbar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.search-sortbar .count { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; }
+.search-sortbar .link-btn { flex: 0 0 auto; font-size: 12.5px; }
+.sort-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.sort-label { color: var(--text2); font-size: 12.5px; }
+/* 紧凑胶囊下拉：padding 收窄，自绘箭头位置跟着前移 */
+.sort-select {
+  width: auto; padding: 7px 30px 7px 12px; font-size: 12.5px; border-radius: 999px;
+  background-position: calc(100% - 16px) 50%, calc(100% - 12px) 50%; background-size: 4px 4px, 4px 4px;
+}
+/* 命中字段标注：结果卡片上标出这条是靠哪个字段命中的 */
+.rec-badge.hit { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.hit-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.hit-chip { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+/* 窄屏：搜索按钮收成图标宽度，避免挤压输入框 */
+@media (max-width: 380px) {
+  .search-go { padding: 9px 14px; }
+  .search-sortbar { gap: 8px; }
+}
+
 /* ---------- 列表 & 流水线卡片 ---------- */
 .list { display: flex; flex-direction: column; gap: 12px; }
 .rec { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); cursor: pointer; }

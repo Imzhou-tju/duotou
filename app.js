@@ -43,7 +43,7 @@ let groupEditStage = '投递';
 let draftStage = '投递';
 let draftDates = {};
 let feedFilter = 'all';
-let searchState = { kw: '', stage: '全部', unit: '', position: '', base: '', sort: 'update' };
+let searchState = { kw: '', stage: '全部', sort: 'update' };
 const PAGE_SIZE = 20;      // 列表每页展示的「卡片项」数（集团卡 / 单位卡 / 单卡，不会劈开一个单位）
 let feedShown = PAGE_SIZE;
 let searchShown = PAGE_SIZE;
@@ -630,11 +630,28 @@ function recCardHTML(rec) {
       <span class="rec-meta">当前：<strong style="color:${color}">${esc(rec.stage)}</strong>${stageDateText} · 更新于 ${relTime(rec.update_time)}</span>
       ${rec.link ? '<span class="rec-badge">🔗 链接</span>' : ''}
       ${rec.remark ? '<span class="rec-badge">📝 岗位描述</span>' : ''}
+      ${hitBadgeHTML(rec)}
     </div>
   </div>`;
 }
 
 // ---------- 集团分组 ----------
+// 搜索结果的命中标注：单卡标出这条靠哪个字段命中（首页不标注，searchHitMap 为空时返回空串）
+function hitBadgeHTML(rec) {
+  const field = searchHitMap.get(String(rec.id));
+  return field ? `<span class="rec-badge hit">${esc(field)}命中</span>` : '';
+}
+// 聚合卡（集团 / 单位）下没有单条卡片可标，改为按命中字段汇总一行
+function bucketHitHTML(recs) {
+  if (!searchHitMap.size) return '';
+  const tally = {};
+  for (const r of recs) {
+    const field = searchHitMap.get(String(r.id));
+    if (field) tally[field] = (tally[field] || 0) + 1;
+  }
+  const parts = HIT_ORDER.filter(f => tally[f]).map(f => `${f}命中 ${tally[f]}`);
+  return parts.length ? `<div class="hit-line">${parts.map(p => `<span class="hit-chip">${esc(p)}</span>`).join('')}</div>` : '';
+}
 function groupNameOptions() {
   const set = new Set();
   for (const r of records) {
@@ -675,7 +692,8 @@ function lastActive(recs) {
 }
 // 把记录折叠成卡片项：集团桶（≥2 条）→ 单位桶（≥2 条）→ 单卡。
 // 卡片之间按「桶内最近活动时间」倒序，避免同一个单位/集团的记录被拆散或乱序。
-function bucketize(list) {
+// keepOrder=true 时保留传入顺序（搜索结果用：命中优先级已在 filteredRecords 排好，不能再被活动时间打乱）。
+function bucketize(list, keepOrder) {
   const groups = new Map(), units = new Map(), singles = [];
   for (const r of list) {
     const g = (r.group_name || '').trim();
@@ -696,7 +714,7 @@ function bucketize(list) {
     else singles.push({ type: 'single', key: String(recs[0].id), label: recs[0].company, recs });
   }
   items.push(...singles);
-  items.sort((a, b) => lastActive(b.recs) - lastActive(a.recs));
+  if (!keepOrder) items.sort((a, b) => lastActive(b.recs) - lastActive(a.recs));
   return items;
 }
 // 桶卡上的名称 chip：集团桶列出各单位，单位桶列出各岗位
@@ -727,6 +745,7 @@ function listEmptyHTML(kind) {
 // ---------- 首页 ----------
 function renderFeed() {
   const err = loadState === 'error';
+  searchHitMap.clear();       // 首页不做命中标注，清掉上一次搜索留下的标注
   // 统计条：已投递 = 全部投递记录数（每条都算投过）；一面/二面/Offer 按该阶段计数（拒绝/放弃不上统计条）
   const sent = records.length;
   const int1 = records.filter(r => r.stage === '一面').length;
@@ -761,6 +780,7 @@ function bucketCardHTML(item) {
       </div>
       <div class="g-agg">最新进展：<strong style="color:${color}">${esc(gp.stage)}</strong>${dateTxt}</div>
       ${bucketChips(names, 4)}
+      ${bucketHitHTML(recs)}
       <div class="rec-foot"><span class="rec-meta">点按查看各单位与岗位</span><span class="rec-badge">›</span></div>
     </div>`;
   }
@@ -772,6 +792,7 @@ function bucketCardHTML(item) {
     </div>
     <div class="g-agg">最新进展：<strong style="color:${color}">${esc(gp.stage)}</strong>${dateTxt}</div>
     ${bucketChips(posNames, 4)}
+    ${bucketHitHTML(recs)}
     <div class="rec-foot"><span class="rec-meta">点按查看该单位下的岗位</span><span class="rec-badge">›</span></div>
   </div>`;
 }
@@ -809,25 +830,35 @@ function feedFiltered() {
 }
 
 // ---------- 搜索 ----------
-// 五个筛选条件：关键字（全字段）/ 阶段 / 单位 / 岗位 / Base；单位与岗位为独立子串匹配
+// 一个关键词同时匹配四类字段，并给出命中优先级：岗位名称 > 单位名称（公司/子公司/集团）> Base 地 > 岗位描述
+const HIT_ORDER = ['岗位', '单位', 'Base', '描述'];
+let searchHitMap = new Map();      // 本次搜索结果：记录 id → 命中字段（渲染卡片标注用）
+function matchField(r, kw) {
+  const has = (v) => String(v || '').toLowerCase().includes(kw);
+  if (has(r.position)) return '岗位';
+  if ([r.company, r.sub_unit, r.group_name].some(has)) return '单位';
+  if ([r.base, normalizeLocation(r.base)].some(has)) return 'Base';
+  if (has(r.remark)) return '描述';
+  return '';
+}
 function filteredRecords() {
   const kw = searchState.kw.trim().toLowerCase();
-  const base = searchState.base.trim().toLowerCase();
-  const unit = searchState.unit.trim().toLowerCase();
-  const pos = searchState.position.trim().toLowerCase();
+  searchHitMap = new Map();
   const list = records.filter(r => {
-    const normB = normalizeLocation(r.base);
     if (searchState.stage !== '全部' && r.stage !== searchState.stage) return false;
-    if (base && !([r.base, normB].some(x => (x || '').toLowerCase().includes(base)))) return false;
-    if (unit && !([r.company, r.sub_unit, r.group_name].some(x => (x || '').toLowerCase().includes(unit)))) return false;
-    if (pos && !String(r.position || '').toLowerCase().includes(pos)) return false;
-    if (kw) {
-      const hay = [r.company, r.sub_unit, r.position, r.remark, r.base, normB, r.group_name].map(x => (x || '').toLowerCase()).join(' ');
-      if (!hay.includes(kw)) return false;
-    }
+    if (!kw) return true;
+    const field = matchField(r, kw);
+    if (!field) return false;
+    searchHitMap.set(String(r.id), field);
     return true;
   });
-  return sortRecords(list);
+  const out = sortRecords(list);     // 先按用户选的排序方式排一遍
+  if (kw) {
+    // 再按命中优先级稳定重排：同优先级内保持上面那轮的顺序（sort 在现行浏览器里是稳定的）
+    out.sort((a, b) => HIT_ORDER.indexOf(searchHitMap.get(String(a.id)))
+                     - HIT_ORDER.indexOf(searchHitMap.get(String(b.id))));
+  }
+  return out;
 }
 // 排序：最近更新（默认）/ 投递日期（空值排最后）/ 阶段进度（终态排最后）
 function sortRecords(list) {
@@ -847,15 +878,18 @@ function renderSearch() {
   const stageChips = ['全部', ...ALL_STAGES].map(s =>
     `<span class="chip ${searchState.stage === s ? 'on' : ''}" data-stage="${s}" role="button" tabindex="0" aria-pressed="${searchState.stage === s}">${s}</span>`).join('');
   $('#search-stages').innerHTML = stageChips;
+  $('#search-sort').value = searchState.sort;
   const list = filteredRecords();
   const unitN = new Set(list.map(unitKey)).size;
-  $('#search-count').textContent = `命中 ${list.length} 条记录 · 涉及 ${unitN} 个单位`;
-  const hasFilter = !!(searchState.kw || searchState.unit || searchState.position
-    || searchState.base || searchState.stage !== '全部');
+  $('#search-count').textContent = searchState.kw.trim()
+    ? `「${searchState.kw.trim()}」命中 ${list.length} 条 · ${unitN} 个单位`
+    : `共 ${list.length} 条记录 · ${unitN} 个单位`;
+  const hasFilter = !!(searchState.kw || searchState.stage !== '全部');
   $('#search-clear').classList.toggle('hidden', !hasFilter);
+  $('#search-kw-clear').classList.toggle('hidden', !searchState.kw);
 
-  // 结果同样按「集团 / 单位」聚合展示，与首页保持一致
-  const items = bucketize(list);
+  // 结果同样按「集团 / 单位」聚合展示，与首页保持一致；但保留命中优先级顺序
+  const items = bucketize(list, true);
   const shown = items.slice(0, searchShown);
   $('#search-list').innerHTML = shown.length
     ? shown.map(bucketCardHTML).join('')
@@ -1867,21 +1901,37 @@ function bindEvents() {
     });
   });
 
-  // 搜索：任一筛选 / 排序变化都重置分页
+  // 搜索：一个主搜索框 + 阶段快捷分类 + 排序方式
   const onSearchChange = () => { searchShown = PAGE_SIZE; renderSearch(); };
-  $('#search-kw').addEventListener('input', (e) => { searchState.kw = e.target.value; onSearchChange(); });
-  $('#search-base').addEventListener('input', (e) => { searchState.base = e.target.value; onSearchChange(); });
-  $('#search-unit').addEventListener('input', (e) => { searchState.unit = e.target.value; onSearchChange(); });
-  $('#search-position').addEventListener('input', (e) => { searchState.position = e.target.value; onSearchChange(); });
+  const kwInput = $('#search-kw');
+  // 边打边搜，但中文输入法拼字过程（isComposing）不触发，避免拼音阶段结果闪跳；
+  // 同时做 160ms 防抖，一次连续输入只渲染一次
+  let kwTimer = 0, composing = false;
+  const applyKw = () => { searchState.kw = kwInput.value; onSearchChange(); };
+  kwInput.addEventListener('compositionstart', () => { composing = true; });
+  kwInput.addEventListener('compositionend', () => {
+    composing = false; clearTimeout(kwTimer); applyKw();
+  });
+  kwInput.addEventListener('input', (e) => {
+    if (composing || e.isComposing) return;
+    clearTimeout(kwTimer);
+    kwTimer = setTimeout(applyKw, 160);
+  });
+  // 回车 / 点「搜索」：立即检索并收起移动端键盘
+  $('#search-form').addEventListener('submit', (e) => {
+    e.preventDefault(); clearTimeout(kwTimer); applyKw(); kwInput.blur();
+  });
+  $('#search-kw-clear').addEventListener('click', () => {
+    kwInput.value = ''; searchState.kw = ''; onSearchChange(); kwInput.focus();
+  });
   $('#search-sort').addEventListener('change', (e) => { searchState.sort = e.target.value; onSearchChange(); });
   $('#search-stages').addEventListener('click', (e) => {
     const t = e.target.closest('[data-stage]'); if (!t) return;
     searchState.stage = t.dataset.stage; onSearchChange();
   });
   $('#search-clear').addEventListener('click', () => {
-    searchState = { ...searchState, kw: '', unit: '', position: '', base: '', stage: '全部' };
-    $('#search-kw').value = ''; $('#search-unit').value = '';
-    $('#search-position').value = ''; $('#search-base').value = '';
+    searchState = { ...searchState, kw: '', stage: '全部' };
+    kwInput.value = '';
     onSearchChange();
   });
 
