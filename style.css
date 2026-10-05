@@ -153,15 +153,17 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   display: flex; align-items: center; justify-content: center;
 }
 .pi-name { flex: 1; min-width: 0; padding: 10px 12px; font-size: 14px; }
-.p-meta { display: flex; gap: 8px; margin-top: 8px; padding-left: var(--pind); }
-.p-meta .pi-base, .p-meta .pi-remark {
-  min-width: 0; padding: 8px 11px; font-size: 13px; color: var(--text);
-  background: #fff; border-radius: 9px;
+/* 岗位行固定两行：Base 地一行、岗位描述一行，图片按钮挂在描述行右端 */
+.p-line { display: flex; align-items: flex-end; gap: 8px; padding-left: var(--pind); }
+.p-base-line { margin-top: 8px; }
+.p-base-line .pi-base { flex: 1; min-width: 0; }
+.p-desc-line { margin-top: 8px; }
+.p-desc-line .pi-remark {
+  flex: 1; min-width: 0; min-height: 76px; padding: 9px 11px;
+  font-size: 13px; line-height: 1.5; resize: vertical;
 }
-.p-meta .pi-base { flex: 0 0 38%; }
-.p-meta .pi-remark { flex: 1; }
 .p-hint-sec { margin-top: 0; margin-bottom: 10px; }
-/* 岗位行的备注图片：缩略图条 + 添加按钮（与缩略图同尺寸，换行时不会跳高） */
+/* 岗位行的备注图片：缩略图条（只有传过图才出现，行尾是张数） */
 .p-imgs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-left: var(--pind); }
 .p-img { position: relative; display: inline-flex; }
 .p-img img {
@@ -173,20 +175,20 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   border: 2px solid #fff; border-radius: 50%; background: rgba(0,0,0,.62); color: #fff;
   font-size: 12px; line-height: 14px; cursor: pointer;
 }
-/* 添加按钮：图片图标 + 右下角品牌色小圆加号，替代原来的纯文字虚线小方块 */
+/* 添加按钮：缩到 36px 的小方块贴在描述框右下角，图片图标 + 品牌蓝小圆加号 */
 .p-img-add {
-  position: relative; flex-shrink: 0; width: 48px; height: 48px; padding: 0;
-  border: 1px dashed #D8E0EA; border-radius: 10px; background: #fff;
+  position: relative; flex-shrink: 0; width: 36px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 9px; background: #fff;
   color: #98A5B6; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   transition: border-color .15s ease, background .15s ease, color .15s ease;
 }
-.p-img-add svg { width: 22px; height: 22px; }
+.p-img-add svg { width: 18px; height: 18px; }
 .p-img-add:active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
 .p-img-add-plus {
-  position: absolute; right: -5px; bottom: -5px; width: 17px; height: 17px;
-  border-radius: 50%; background: var(--brand); color: #fff;
-  font-size: 12px; line-height: 17px; text-align: center;
+  position: absolute; right: -4px; bottom: -4px; width: 15px; height: 15px;
+  border: 2px solid #fff; border-radius: 50%; background: var(--brand); color: #fff;
+  font-size: 10px; line-height: 11px; text-align: center;
 }
 .p-img-tip { font-size: 11px; color: var(--text3); margin-left: auto; }
 /* 详情弹层里的图片 */
@@ -603,9 +605,8 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   .auth-card { max-width: 100%; padding: 34px 22px; }
   .rec-title { font-size: 16px; }
   .u-body { padding: 12px; }
-  /* 窄屏两格并排会挤到 placeholder 只露一半，改成上下两行 */
-  .p-meta { flex-direction: column; }
-  .p-meta .pi-base, .p-meta .pi-remark { width: 100%; flex: none; }
+  /* 窄屏描述框给多点高度，图片按钮不跟着长 */
+  .p-desc-line .pi-remark { min-height: 88px; }
 }
 
 /* 小屏加固：只压缩间距与控件尺寸，不缩字号 */

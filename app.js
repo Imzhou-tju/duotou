@@ -16,7 +16,7 @@ const COLORS = {
 const MAX_POSITIONS = 10;   // 单个单位最多岗位数
 const MAX_UNITS = 20;       // 集团模式最多单位数
 const MAX_RECORDS = 60;     // 单次提交最多记录数
-// 备注图片：Supabase Storage 公开桶，路径固定 {user.id}/xxx，权限由 storage.objects 策略按目录限制
+// 岗位图片：Supabase Storage 公开桶，路径固定 {user.id}/xxx，权限由 storage.objects 策略按目录限制
 const IMG_BUCKET = 'remark-media';
 const IMG_MAX_EDGE = 1600;      // 压缩后长边上限（px）
 const IMG_MAX_EDGE_PNG = 2400;  // 截图类 PNG 文字多，放宽一点避免字糊
@@ -24,7 +24,7 @@ const MAX_IMGS_PER_POS = 4;     // 单个岗位最多几张
 const MAX_IMG_INPUT_MB = 12;    // 选图时的原始体积上限
 let uidSeq = 0;
 function nextKey(p) { return p + (++uidSeq); }
-// Base 地 / 备注挂在「岗位」上：同一个单位的不同岗位，Base 地和备注可能不一样（如总部岗 vs 外地岗）
+// Base 地 / 岗位描述挂在「岗位」上：同一个单位的不同岗位，Base 地和描述可能不一样（如总部岗 vs 外地岗）
 function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '', imgs: [] }; }
 function newUnit() {
   return { key: nextKey('u'), recId: null, sub: '', date: todayStr(), positions: [newPosition()] };
@@ -631,7 +631,7 @@ function recCardHTML(rec) {
     <div class="rec-foot">
       <span class="rec-meta">当前：<strong style="color:${color}">${esc(rec.stage)}</strong>${stageDateText} · 更新于 ${relTime(rec.update_time)}</span>
       ${rec.link ? '<span class="rec-badge">🔗 链接</span>' : ''}
-      ${rec.remark ? '<span class="rec-badge">📝 备注</span>' : ''}
+      ${rec.remark ? '<span class="rec-badge">📝 岗位描述</span>' : ''}
     </div>
   </div>`;
 }
@@ -969,7 +969,7 @@ function renderUnits() {
         </div>
         <div class="u-sec">
           <div class="u-sec-title">该单位下的岗位<span class="u-pos-n" data-posn="${u.key}">（${u.positions.length}）</span></div>
-          <div class="p-hint p-hint-sec">Base 地与备注按岗位填写，每个岗位各自独立</div>
+          <div class="p-hint p-hint-sec">Base 地与岗位描述按岗位填写，每个岗位各自独立</div>
           <div class="u-positions p-list" data-posof="${u.key}"></div>
           <button type="button" class="p-add" data-padd="${u.key}">＋ 添加岗位</button>
         </div>
@@ -992,11 +992,14 @@ function renderPositions(unit, container) {
         <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
                 ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
       </div>
-      <div class="p-meta">
+      <div class="p-line p-base-line">
         <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
                placeholder="Base 地，如 成都 / 深圳" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
-        <input class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" maxlength="120"
-               placeholder="备注，如 邮箱投的 / 内推" aria-label="岗位 ${i + 1} 的备注" value="${esc(p.remark || '')}">
+      </div>
+      <div class="p-line p-desc-line">
+        <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="2" maxlength="300"
+                  placeholder="岗位描述，如：做 AI 应用后端，Java + 微服务" aria-label="岗位 ${i + 1} 的岗位描述">${esc(p.remark || '')}</textarea>
+        ${imgAddBtnHTML(unit, p, i)}
       </div>
       ${imgStripHTML(unit, p, i)}
     </div>`).join('');
@@ -1101,25 +1104,29 @@ function openImageViewer(src) {
   imgViewer.classList.remove('hidden');
 }
 function closeImageViewer() { if (imgViewer) imgViewer.classList.add('hidden'); }
+// 岗位描述框右侧的小图片按钮：只占一个 36px 方块，加图入口不另起一行
+function imgAddBtnHTML(unit, p, i) {
+  if ((p.imgs || []).length >= MAX_IMGS_PER_POS) return '';
+  return `<button type="button" class="p-img-add" data-uk="${unit.key}" data-pk="${p.key}" data-imgadd="1"
+     title="添加岗位图片" aria-label="给岗位 ${i + 1} 添加岗位图片">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5"/>
+      <path d="M4.2 17.4l4.6-4.6 3.4 3.4 3-3 4.6 4.6"/>
+    </svg><span class="p-img-add-plus" aria-hidden="true">＋</span>
+  </button>`;
+}
 function imgStripHTML(unit, p, i) {
   const imgs = p.imgs || [];
-  const full = imgs.length >= MAX_IMGS_PER_POS;
+  if (!imgs.length) return '';
   return `<div class="p-imgs">
     ${imgs.map((im, k) => `<span class="p-img">
-      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="备注图片 ${k + 1}" loading="lazy"
+      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="岗位图片 ${k + 1}" loading="lazy"
            data-preview="${esc(im.url || publicUrlOf(im.path))}">
       <button type="button" class="p-img-x" data-uk="${unit.key}" data-pk="${p.key}" data-imgdel="${k}"
               aria-label="删除这张图片">×</button>
     </span>`).join('')}
-    ${full ? '' : `<button type="button" class="p-img-add" data-uk="${unit.key}" data-pk="${p.key}" data-imgadd="1"
-       title="添加备注图片" aria-label="给岗位 ${i + 1} 添加备注图片">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5"/>
-        <path d="M4.2 17.4l4.6-4.6 3.4 3.4 3-3 4.6 4.6"/>
-      </svg><span class="p-img-add-plus" aria-hidden="true">＋</span>
-    </button>`}
-    ${imgs.length ? `<span class="p-img-tip">${imgs.length}/${MAX_IMGS_PER_POS}</span>` : ''}
+    <span class="p-img-tip">${imgs.length}/${MAX_IMGS_PER_POS}</span>
   </div>`;
 }
 // 添加岗位：达上限置灰，重名拦截并把焦点移到已存在的那一行
@@ -1706,18 +1713,18 @@ function renderSheet(id) {
   if (rec.remark) {
     remarkHTML = `
       <div class="sheet-field sheet-remark-card">
-        <div class="sheet-field-label">备注信息</div>
+        <div class="sheet-field-label">岗位描述</div>
         <div class="sheet-remark-text">${esc(rec.remark)}</div>
       </div>`;
   }
-  // 备注图片：点开看大图（viewer 由 app.js 统一挂在 body 上）
+  // 岗位图片：点开看大图（viewer 由 app.js 统一挂在 body 上）
   const imgs = imgsOf(rec);
   if (imgs.length) {
     remarkHTML += `
       <div class="sheet-field">
-        <div class="sheet-field-label">备注图片（${imgs.length}）</div>
+        <div class="sheet-field-label">岗位图片（${imgs.length}）</div>
         <div class="sheet-imgs">${imgs.map((im, k) => `<img class="sheet-img"
-           src="${esc(im.url || publicUrlOf(im.path))}" alt="备注图片 ${k + 1}" loading="lazy"
+           src="${esc(im.url || publicUrlOf(im.path))}" alt="岗位图片 ${k + 1}" loading="lazy"
            data-preview="${esc(im.url || publicUrlOf(im.path))}">`).join('')}</div>
       </div>`;
   }
@@ -1783,7 +1790,7 @@ function renderAccount() {
   $('#account-avatar').textContent = (user.email || '我')[0].toUpperCase();
 }
 function exportCSV() {
-  const headers = ['集团', '单位', '二级单位', 'Base', '岗位', '阶段', '投递日期', '链接', '备注'];
+  const headers = ['集团', '单位', '二级单位', 'Base', '岗位', '阶段', '投递日期', '链接', '岗位描述'];
   const rows = records.map(r => [r.group_name || '', r.company, r.sub_unit, r.base, r.position, r.stage, r.apply_date || '', r.link || '', r.remark || '']);
   const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
   const csv = [headers, ...rows].map(row => row.map(q).join(',')).join('\n');

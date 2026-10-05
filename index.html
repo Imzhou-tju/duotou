@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261005-2" data-app>
-<link rel="stylesheet" href="style.css?v=20261005-2">
+<link rel="preload" as="script" href="app.js?v=20261005-3" data-app>
+<link rel="stylesheet" href="style.css?v=20261005-3">
 </head>
 <body>
 
@@ -66,7 +66,7 @@
 
     <!-- 搜索 -->
     <section id="view-search" class="view hidden">
-      <div class="search-bar"><input id="search-kw" placeholder="搜索 单位 / 岗位 / 备注 / 集团"></div>
+      <div class="search-bar"><input id="search-kw" placeholder="搜索 单位 / 岗位 / 描述 / 集团"></div>
       <div class="card">
         <div class="f-row"><span class="f-label">阶段</span><div id="search-stages" class="chips"></div></div>
         <div class="f-row"><span class="f-label">单位</span><input id="search-unit" class="f-input" list="company-list" placeholder="如 中信银行 / 北京分行"></div>
@@ -162,7 +162,7 @@
               <textarea id="f-position-multi" rows="3" placeholder="每行一个岗位，例如：&#10;AI 应用开发岗&#10;软件开发岗"></textarea>
               <div class="batch-foot">点别处或右上角「收起」即并入上方列表，重复的会自动跳过</div>
             </div>
-            <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录；Base 地与备注按岗位各自填写，互不影响</div>
+            <div class="p-hint">同一单位可投多个岗位，每个岗位会生成一条独立记录；Base 地与岗位描述按岗位各自填写，互不影响</div>
             <div id="err-positions" class="field-err hidden"></div>
           </div>
         </div>
@@ -173,7 +173,7 @@
             <div id="g-rows"></div>
             <button type="button" id="g-add" class="g-add">＋ 再加一个单位</button>
             <div id="g-count" class="count-badge"></div>
-            <div class="p-hint">每个单位可投多个岗位，各生成一条记录；Base 地与备注按岗位单独填（留空沿用单位默认值），投递链接全单共用</div>
+            <div class="p-hint">每个单位可投多个岗位，各生成一条记录；Base 地与岗位描述按岗位单独填（留空沿用单位默认值），投递链接全单共用</div>
             <div id="err-units" class="field-err hidden"></div>
           </div>
         </div>
