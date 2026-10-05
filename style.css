@@ -137,8 +137,8 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
 .u-line .date-fld { flex: 0 0 152px; }
 
 /* ---------- 岗位行（单单位模式与单位卡共用） ---------- */
-/* 一个岗位 = 一张白卡：序号 + 岗位名，下面 Base / 备注两格，再下面图片条。
-   --pind 是「序号圆之后的输入区左边界」，图片条与 Base 行复用它，保证三行左边缘对齐。 */
+/* 一个岗位 = 一张白卡：第一行「岗位名 + Base 地 + 删除」，第二行「岗位描述 + 图片按钮」，有图时再挂图片条。
+   --pind 是「序号圆之后的输入区左边界」，描述行与图片条复用它，保证左边缘与岗位名对齐。 */
 .p-list { display: flex; flex-direction: column; gap: 10px; }
 .p-item {
   --pind: 30px;
@@ -153,14 +153,14 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   display: flex; align-items: center; justify-content: center;
 }
 .pi-name { flex: 1; min-width: 0; padding: 10px 12px; font-size: 14px; }
-/* 岗位行固定两行：Base 地一行、岗位描述一行，图片按钮挂在描述行右端 */
-.p-line { display: flex; align-items: flex-end; gap: 8px; padding-left: var(--pind); }
-.p-base-line { margin-top: 8px; }
-.p-base-line .pi-base { flex: 1; min-width: 0; }
+/* Base 地跟岗位名同一行、右侧固定比例；三个控件同高（padding / font 一致） */
+.pi-base { flex: 0 0 38%; min-width: 0; padding: 10px 12px; font-size: 14px; }
+.p-line { display: flex; align-items: center; gap: 8px; padding-left: var(--pind); }
 .p-desc-line { margin-top: 8px; }
+/* 描述框默认就是普通输入框的单行高，内容真放不下时由 autoGrowRemark 按需长高（最多约 3 行） */
 .p-desc-line .pi-remark {
-  flex: 1; min-width: 0; min-height: 76px; padding: 9px 11px;
-  font-size: 13px; line-height: 1.5; resize: vertical;
+  flex: 1; min-width: 0; min-height: 40px; padding: 10px 12px;
+  font-size: 14px; line-height: 18px; resize: vertical; overflow-y: auto;
 }
 .p-hint-sec { margin-top: 0; margin-bottom: 10px; }
 /* 岗位行的备注图片：缩略图条（只有传过图才出现，行尾是张数） */
@@ -605,8 +605,9 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   .auth-card { max-width: 100%; padding: 34px 22px; }
   .rec-title { font-size: 16px; }
   .u-body { padding: 12px; }
-  /* 窄屏描述框给多点高度，图片按钮不跟着长 */
-  .p-desc-line .pi-remark { min-height: 88px; }
+  /* 窄屏岗位名让位给 Base 地：Base 收到 36%，同时保证平台名还有最小宽度 */
+  .pi-base { flex: 0 0 36%; }
+  .pi-name { min-width: 108px; }
 }
 
 /* 小屏加固：只压缩间距与控件尺寸，不缩字号 */
@@ -615,7 +616,7 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   .u-line { gap: 8px; }
   .u-line .date-fld { flex: 1 1 124px; }
   .pi-del { width: 34px; height: 34px; }
-  /* 序号圆藏掉，输入区左边界同步收回，否则 Base 行会整块右移 30px */
+  /* 序号圆藏掉，输入区左边界同步收回，否则描述行 / 图片条会整块右移 30px */
   .pi-idx { display: none; }
   .p-item { --pind: 0; }
 }

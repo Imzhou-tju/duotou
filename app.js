@@ -989,15 +989,13 @@ function renderPositions(unit, container) {
         <span class="pi-idx">${i + 1}</span>
         <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
                placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
+        <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
+               placeholder="Base 地，如 成都" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
         <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
                 ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
       </div>
-      <div class="p-line p-base-line">
-        <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
-               placeholder="Base 地，如 成都 / 深圳" aria-label="岗位 ${i + 1} 的 Base 地" value="${esc(p.base || '')}">
-      </div>
       <div class="p-line p-desc-line">
-        <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="2" maxlength="300"
+        <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="1" maxlength="300"
                   placeholder="岗位描述，如：做 AI 应用后端，Java + 微服务" aria-label="岗位 ${i + 1} 的岗位描述">${esc(p.remark || '')}</textarea>
         ${imgAddBtnHTML(unit, p, i)}
       </div>
@@ -1014,6 +1012,7 @@ function renderPositions(unit, container) {
     if (nEl) nEl.textContent = `（${unit.positions.length}）`;
   }
   updateUnitCount();
+  container.querySelectorAll('.pi-remark').forEach(autoGrowRemark);   // 已有长描述按内容对齐高度
 }
 function findUnit(key) { return draftUnits.find(u => u.key === key); }
 // 岗位行图片的点击分发：添加 / 删除 / 点开预览。两个岗位区共用。
@@ -1188,6 +1187,12 @@ function setPositionMeta(u, inputEl) {
   if (inputEl.dataset.pb) { p.base = inputEl.value; return true; }
   if (inputEl.dataset.pr) { p.remark = inputEl.value; return true; }
   return false;
+}
+// 描述框默认只占一行高的普通输入框大小，内容真放不下才按需长高（最多约 3 行），不默认撑成大方块
+function autoGrowRemark(el) {
+  if (!el || el.dataset.pr === undefined) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 function removeUnit(unitKey) {
   if (draftUnits.length <= 1) return;
@@ -2009,7 +2014,7 @@ function bindEvents() {
     if (!u) return;
     const eu = $('#err-units'); if (eu) eu.classList.add('hidden');
     if (t.dataset.gf) { u[t.dataset.gf] = t.value; return; }
-    if (setPositionMeta(u, t)) return;      // 岗位行内的 Base 地 / 备注
+    if (setPositionMeta(u, t)) { autoGrowRemark(t); return; }   // 岗位行内的 Base 地 / 岗位描述
     if (t.dataset.pk) editPositionName(u, t.dataset.pk, t.value, t);
   });
   $('#g-rows').addEventListener('click', (e) => {
@@ -2033,7 +2038,7 @@ function bindEvents() {
     const t = e.target;
     if (!t.dataset.pk) return;
     const ep = $('#err-positions'); if (ep) ep.classList.add('hidden');
-    if (setPositionMeta(draftUnits[0], t)) return;   // 岗位行内的 Base 地 / 备注
+    if (setPositionMeta(draftUnits[0], t)) { autoGrowRemark(t); return; }   // 岗位行内的 Base 地 / 岗位描述
     editPositionName(draftUnits[0], t.dataset.pk, t.value, t);
   });
   // 岗位行 Base 地失焦时按地名表归一化（与整单 Base 输入同一口径，避免「雄安 / 北京朝阳」这类写法落库）
