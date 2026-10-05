@@ -985,7 +985,7 @@ function renderPositions(unit, container) {
   if (!unit || !container) return;
   container.innerHTML = unit.positions.map((p, i) => `
     <div class="p-item">
-      <div class="p-row">
+      <div class="p-top">
         <span class="pi-idx">${i + 1}</span>
         <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
                placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
@@ -1112,7 +1112,13 @@ function imgStripHTML(unit, p, i) {
               aria-label="删除这张图片">×</button>
     </span>`).join('')}
     ${full ? '' : `<button type="button" class="p-img-add" data-uk="${unit.key}" data-pk="${p.key}" data-imgadd="1"
-       aria-label="给岗位 ${i + 1} 添加备注图片">＋ 图</button>`}
+       title="添加备注图片" aria-label="给岗位 ${i + 1} 添加备注图片">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5"/>
+        <path d="M4.2 17.4l4.6-4.6 3.4 3.4 3-3 4.6 4.6"/>
+      </svg><span class="p-img-add-plus" aria-hidden="true">＋</span>
+    </button>`}
     ${imgs.length ? `<span class="p-img-tip">${imgs.length}/${MAX_IMGS_PER_POS}</span>` : ''}
   </div>`;
 }
