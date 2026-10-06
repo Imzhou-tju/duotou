@@ -1346,16 +1346,12 @@ function duplicatePosition(u, pos, name) {
   if (!k) return null;
   return u.positions.find(p => p !== pos && posKeyOf(p.name) === k) || null;
 }
-// 改岗位名：重名则提示并回滚输入框，不写入状态（避免整表重渲染丢焦点）
-function editPositionName(u, posKey, value, inputEl) {
+// 改岗位名：只写状态，不做实时查重 —— 同名不同 Base 是合法场景（如「软件研发员」在广州、成都各投一次），
+// 实时拦截会在名字打到与已有岗位相同的瞬间清空输入框，导致后缀/Base 补不上去；真正的重复（同名同 Base）
+// 由保存时的去重处理（见 doSaveSingleRecord 的 seen 键：岗位名 + Base）
+function editPositionName(u, posKey, value) {
   const p = u.positions.find(x => x.key === posKey);
   if (!p) return;
-  const dup = duplicatePosition(u, p, value);
-  if (dup) {
-    toast(`「${String(value).trim()}」已经添加过了`);
-    if (inputEl) inputEl.value = p.name;
-    return;
-  }
   p.name = value;
   updateUnitCount();
 }
@@ -1560,8 +1556,8 @@ async function doSaveSingleRecord() {
   for (const p of u.positions) {
     const name = (p.name || '').trim();
     if (name) {
-      const k = posKeyOf(name);
-      if (seen.has(k)) continue;          // 同一单位下重名岗位只留一条，与批量粘贴的去重口径一致
+      const k = posKeyOf(name) + '|' + posKeyOf(p.base);   // 去重键 = 岗位名 + Base：同名不同 Base 都保留
+      if (seen.has(k)) continue;          // 同名同 Base 的重复岗位只留一条；批量粘贴的空 Base 行也会在这里合并
       seen.add(k);
     }
     list.push({
@@ -2213,7 +2209,7 @@ function bindEvents() {
     const eu = $('#err-units'); if (eu) eu.classList.add('hidden');
     if (t.dataset.gf) { u[t.dataset.gf] = t.value; return; }
     if (setPositionMeta(u, t)) { autoGrowRemark(t); return; }   // 岗位行内的 Base 地 / 岗位描述
-    if (t.dataset.pk) editPositionName(u, t.dataset.pk, t.value, t);
+    if (t.dataset.pk) editPositionName(u, t.dataset.pk, t.value);
   });
   $('#g-rows').addEventListener('click', (e) => {
     const add = e.target.closest('[data-padd]');
@@ -2237,7 +2233,7 @@ function bindEvents() {
     if (!t.dataset.pk) return;
     const ep = $('#err-positions'); if (ep) ep.classList.add('hidden');
     if (setPositionMeta(draftUnits[0], t)) { autoGrowRemark(t); return; }   // 岗位行内的 Base 地 / 岗位描述
-    editPositionName(draftUnits[0], t.dataset.pk, t.value, t);
+    editPositionName(draftUnits[0], t.dataset.pk, t.value);
   });
   // 岗位行 Base 地失焦时按地名表归一化（与整单 Base 输入同一口径，避免「雄安 / 北京朝阳」这类写法落库）
   for (const sel of ['#single-positions', '#g-rows']) {
