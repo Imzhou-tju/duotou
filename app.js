@@ -1348,7 +1348,7 @@ function duplicatePosition(u, pos, name) {
 }
 // 改岗位名：只写状态，不做实时查重 —— 同名不同 Base 是合法场景（如「软件研发员」在广州、成都各投一次），
 // 实时拦截会在名字打到与已有岗位相同的瞬间清空输入框，导致后缀/Base 补不上去；真正的重复（同名同 Base）
-// 由保存时的去重处理（见 doSaveSingleRecord 的 seen 键：岗位名 + Base）
+// 由保存时的去重处理（见 doSaveSingleRecord 的 seen 键：岗位名 + Base + 备注，三者全同才算重复）
 function editPositionName(u, posKey, value) {
   const p = u.positions.find(x => x.key === posKey);
   if (!p) return;
@@ -1556,8 +1556,8 @@ async function doSaveSingleRecord() {
   for (const p of u.positions) {
     const name = (p.name || '').trim();
     if (name) {
-      const k = posKeyOf(name) + '|' + posKeyOf(p.base);   // 去重键 = 岗位名 + Base：同名不同 Base 都保留
-      if (seen.has(k)) continue;          // 同名同 Base 的重复岗位只留一条；批量粘贴的空 Base 行也会在这里合并
+      const k = posKeyOf(name) + '|' + posKeyOf(p.base) + '|' + posKeyOf(p.remark);   // 去重键 = 岗位名 + Base + 备注：三者全同才算重复岗位
+      if (seen.has(k)) continue;          // 岗位名 / Base / 备注任一不同都各自保留；同名同 Base 同备注的真重复只留一条；批量粘贴的空 Base/空备注行也会在这里合并
       seen.add(k);
     }
     list.push({
