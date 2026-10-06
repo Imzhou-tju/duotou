@@ -1218,7 +1218,7 @@ function renderPositions(unit, container) {
                 ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
       </div>
       <div class="p-line p-desc-line">
-        <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="1" maxlength="300"
+        <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="1"
                   placeholder="岗位描述，如：做 AI 应用后端，Java + 微服务" aria-label="岗位 ${i + 1} 的岗位描述">${esc(p.remark || '')}</textarea>
         ${imgAddBtnHTML(unit, p, i)}
       </div>
