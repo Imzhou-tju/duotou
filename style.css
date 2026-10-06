@@ -350,6 +350,24 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
 }
 .batch-box textarea { padding: 9px 11px; font-size: 14px; background: var(--field); }
 .batch-foot { font-size: 12px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+/* 智能识别：灰度入口，刻意做成弱化的文字链，不抢「批量粘贴」胶囊的视觉重心 */
+.pos-link {
+  font-size: 12px; line-height: 1; padding: 0; cursor: pointer;
+  color: var(--text3); background: none; border: none;
+}
+.pos-link:hover, .pos-link[data-on="1"] { color: var(--brand); }
+.smart-actions { display: flex; gap: 8px; margin-top: 8px; }
+.btn-mini {
+  height: 28px; padding: 0 12px; font-size: 12px; line-height: 1; cursor: pointer;
+  border-radius: 14px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text);
+}
+.btn-mini.ghost { color: var(--text2); }
+.smart-prev { margin-top: 10px; display: grid; gap: 8px; }
+.sp-row { display: flex; align-items: flex-start; gap: 10px; }
+.sp-lab { flex: 0 0 68px; font-size: 12px; color: var(--text2); line-height: 28px; }
+.sp-row input, .sp-row textarea { flex: 1; min-width: 0; }
+/* 暗色下沿用变量即可；这里不写死任何颜色，避免暗色主题漏改 */
 /* 单位名称 / 集团名称 并排占第一行，各自标签在上，省掉一整行 */
 .fr2 { display: flex; gap: 12px; align-items: flex-start; }
 .fr2 > div { flex: 1; min-width: 0; }

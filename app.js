@@ -1540,6 +1540,247 @@ function setBatchMode(on, opts) {
   const addBtn = $('#p-add-single');
   if (addBtn) addBtn.classList.toggle('hidden', on);
 }
+// ---------- 岗位信息智能识别（粘贴文本 → 字段） ----------
+// 四层递进、命中即停；认不出来就留空，绝不猜：
+//   1) 标签式：出现「公司：」「岗位：」「工作地点：」这类带冒号的字段名，直接采信
+//   2) 已知库：拿全文去匹配历史填过的单位名 / 岗位名（datalist 候选），命中即确定
+//   3) 启发式：公司后缀、岗位关键词、地名表（复用 matchCity / normalizeLocation）
+//   4) 兜底留空
+// 结果一律先出可编辑预览，确认后才写入表单 —— 这是准确率最后的保险。
+const SMART_LABELS = [
+  { key: 'company',  re: /^\s*(?:公司|单位|企业名称|招聘单位|用人单位|投递单位)(?:名称)?\s*[:：]\s*(.+)$/ },
+  { key: 'position', re: /^\s*(?:岗位|职位|应聘岗位|招聘岗位|岗位名称|职位名称|投递岗位)\s*[:：]\s*(.+)$/ },
+  { key: 'base',     re: /^\s*(?:工作)?(?:地点|城市|办公地点|工作城市|base|Base|BASE)\s*[:：]\s*(.+)$/ },
+  { key: 'remark',   re: /^\s*(?:岗位)?(?:职责|描述|介绍|要求|jd|JD|工作内容)\s*[:：]\s*(.*)$/ },
+];
+// 岗位名里的噪声：薪资段、学历、经验年限、常见福利词
+const SMART_POS_WORD = /(工程师|研发|开发|算法|前端|后端|全栈|测试|运维|数据|产品|运营|设计|销售|市场|人事|人力|财务|法务|行政|嵌入式|安卓|Android|iOS|Java|Python|Golang|Go语言|C\+\+|大模型|机器学习|视觉|语音|NLP|自然语言处理|推荐|搜索|风控|安全|实习生|专员|主管|经理|总监|架构师|专家|顾问|分析师|设计师|助理|研究员|岗位)/;
+const SMART_CO_SUFFIX = '(?:股份有限公司|有限责任公司|有限公司|集团公司|集团|研究院|研究所|设计院)';
+const SMART_BRACKET_NOISE = /^(?:急招|急聘|招聘|内推|校招|社招|全职|兼职|实习|远程|线下|线上|最新|置顶|热门|官方|直招)$/;
+
+function smartStripNoise(s) {
+  let out = String(s || '');
+  out = out.replace(/\d+\s*[-~至到]\s*\d+\s*年(?:以上)?(?:经验)?/g, ' ');
+  out = out.replace(/\d+\s*年(?:以上)?经验/g, ' ');
+  out = out.replace(/经验不限|无需经验/g, ' ');
+  out = out.replace(/\d+\s*[-~至到]\s*\d+\s*[kKwW千万]?/g, ' ');
+  out = out.replace(/\d+\s*[kKwW千万]\s*(?:以上|起)?/g, ' ');
+  out = out.replace(/(博士|硕士|研究生|本科|大专|专科)(及以上|或以上|以上)?/g, ' ');
+  out = out.replace(/(五险一金|周末双休|双休|弹性工作|年终奖|餐补|房补|交通补助|免费班车)/g, ' ');
+  out = out.replace(/[·•|｜]+/g, ' ');
+  out = out.replace(/\s{2,}/g, ' ').trim();
+  return out.replace(/^[\s，,。;；、/|-]+|[\s，,。;；、/|-]+$/g, '').trim();
+}
+// 长段落切成短片段，便于逐段判断它更像岗位名还是地名
+function smartSegments(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\n+/)) {
+    const l = line.trim();
+    if (!l) continue;
+    if (l.length <= 40) { out.push(l); continue; }
+    for (const p of l.split(/[。；;！？!?]+/)) { const s = p.trim(); if (s) out.push(s); }
+  }
+  return out;
+}
+// 第 1 层：带冒号的字段名（命中率最高，几乎不会错）
+function smartLabeled(lines) {
+  const out = { company: '', position: '', base: '', remark: '' };
+  const buf = [];
+  let inRemark = false;
+  for (const line of lines) {
+    let hit = null;
+    for (const L of SMART_LABELS) {
+      const m = line.match(L.re);
+      if (m) { hit = { key: L.key, val: (m[1] || '').trim() }; break; }
+    }
+    if (hit && hit.key === 'remark') { inRemark = true; if (hit.val) buf.push(hit.val); continue; }
+    if (hit) { inRemark = false; if (!out[hit.key]) out[hit.key] = smartStripNoise(hit.val); continue; }
+    if (inRemark) buf.push(line);
+  }
+  if (!out.remark && buf.length) out.remark = smartStripNoise(buf.join('\n'));
+  return out;
+}
+// 第 2 层：历史填过的单位 / 岗位（datalist 候选），取最长的那条命中
+function smartKnown(sel, text, minLen) {
+  let best = '';
+  document.querySelectorAll(sel + ' option').forEach(o => {
+    const v = String(o.value || '').trim();
+    if (v.length < minLen || !text.includes(v)) return;
+    if (v.length > best.length) best = v;
+  });
+  return best;
+}
+// 第 3 层：方括号标题 / 公司后缀
+function smartGuessCompany(segs, body) {
+  const br = body.match(/[【\[「]([^】\]」]{2,40})[】\]」]/);
+  if (br) {
+    const v = smartStripNoise(br[1]);
+    if (v && !SMART_BRACKET_NOISE.test(v) && !SMART_POS_WORD.test(v)) return v;
+  }
+  const re = new RegExp('[^\\s，。；、|()（）【】「」\\[\\]]{2,40}' + SMART_CO_SUFFIX);
+  const m = body.match(re);
+  if (m) {
+    const v = m[0].replace(/^(?:招聘单位|用人单位|公司名称|单位名称|企业名称|集团名称|公司|单位|投递|岗位|职位)+/, '');
+    return smartStripNoise(v);
+  }
+  return '';
+}
+// 再兜一层：招聘文本里公司名通常是第一个「不含岗位词、不含地名、不含冒号」的短段
+function smartGuessCompanyFirst(segs) {
+  for (const seg of segs) {
+    const l = seg.trim();
+    if (l.length < 2 || l.length > 20) continue;
+    // 至少一个汉字，否则「asdf qwer」这种纯噪声也会被当成公司名
+    if (!/[\u4e00-\u9fa5]/.test(l)) continue;
+    if (SMART_POS_WORD.test(l) || matchCity(l) || /[:：]/.test(l) || /^\d/.test(l)) continue;
+    return l.replace(/(?:诚聘|招聘|招募|热招)$/, '');
+  }
+  return '';
+}
+// 岗位名里不该带城市（「Java 后端开发工程师 北京」里的北京属于 Base，不是岗位名的一部分）
+function smartDropCities(s) {
+  return String(s || '')
+    .split(/[\s，,。;；、|()（）【】「」\[\]/]+/)
+    .filter(t => !(t && t.length <= 6 && matchCity(t)))
+    .join(' ')
+    .replace(/\s{2,}/g, ' ').trim();
+}
+function smartGuessPosition(segs, company) {
+  for (const seg of segs) {
+    let l = seg.trim();
+    if (!l || l.length > 40) continue;
+    if (company && l.includes(company)) l = l.split(company).join(' ');
+    l = smartDropCities(smartStripNoise(l));
+    if (l.length < 2 || l.length > 30) continue;
+    if (!SMART_POS_WORD.test(l)) continue;
+    return l;
+  }
+  return '';
+}
+function smartGuessBase(segs, company) {
+  for (const seg of segs) {                     // 整段就是一个地点（含多地点写法）
+    const l = seg.trim();
+    if (!l || l.length > 24) continue;
+    if (company && l.includes(company)) continue;
+    if (SMART_POS_WORD.test(l)) continue;
+    const n = normalizeLocation(l);
+    if (n && n !== l) return n;
+  }
+  const toks = [];                              // 退一步：按词找
+  for (const seg of segs) for (const t of seg.split(/[\s，。；、|&()（）【】「」\[\]/]+/)) if (t) toks.push(t);
+  for (const t of toks) {
+    if (t.length > 6 || (company && t.includes(company))) continue;
+    if (SMART_POS_WORD.test(t)) continue;
+    if (matchCity(t)) return normalizeLocation(t);
+  }
+  return '';
+}
+function smartGuessRemark(segs, company, position) {
+  const cands = segs.filter(l => {
+    if (l.length < 15) return false;
+    if (company && l.includes(company)) return false;
+    if (position && l.includes(position)) return false;
+    return true;
+  }).sort((a, b) => b.length - a.length);
+  return cands.length ? smartStripNoise(cands[0]) : '';
+}
+function parseJobText(raw) {
+  const text = String(raw || '').replace(/\r/g, '');
+  const out = { company: '', position: '', base: '', remark: '', link: '' };
+  const mLink = text.match(/https?:\/\/[^\s，。；）)"']+/);
+  if (mLink) out.link = mLink[0].replace(/[。，,；;]+$/, '');
+  const body = mLink ? text.replace(mLink[0], ' ') : text;
+  const lines = body.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  const segs = smartSegments(body);
+
+  const labeled = smartLabeled(lines);
+  for (const k of ['company', 'position', 'base', 'remark']) if (labeled[k]) out[k] = labeled[k];
+  if (out.base) out.base = normalizeLocation(out.base);
+
+  if (!out.company) out.company = smartKnown('#company-list', body, 2);
+  if (!out.position) out.position = smartKnown('#position-list', body, 3);
+
+  if (!out.company) out.company = smartGuessCompany(segs, body) || smartGuessCompanyFirst(segs);
+  if (!out.base) out.base = smartGuessBase(segs, out.company);
+  if (!out.position) out.position = smartGuessPosition(segs, out.company);
+  if (!out.remark) out.remark = smartGuessRemark(segs, out.company, out.position);
+  return out;
+}
+// 面板开关：与「批量粘贴」互斥，同时只展开一个
+function setSmartMode(on) {
+  const btn = $('#f-pos-smart'), box = $('#smart-box'), ta = $('#f-smart-text');
+  if (!btn || !box || !ta) return;
+  const bb = $('#batch-box');
+  if (on && bb && !bb.classList.contains('hidden')) setBatchMode(false, { merge: true });
+  if (!on) { ta.value = ''; renderSmartPreview(null); }
+  btn.dataset.on = on ? '1' : '0';
+  btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  box.classList.toggle('hidden', !on);
+}
+function smartRow(label, key, val, multi) {
+  const v = val ? esc(val) : '';
+  const ctl = multi ? `<textarea id="sp-${key}" rows="2">${v}</textarea>` : `<input id="sp-${key}" value="${v}">`;
+  return `<div class="sp-row"><span class="sp-lab">${label}</span>${ctl}</div>`;
+}
+function renderSmartPreview(res) {
+  const box = $('#smart-preview');
+  if (!box) return;
+  if (!res) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="smart-prev">'
+    + smartRow('单位名称', 'company', res.company)
+    + smartRow('岗位', 'position', res.position)
+    + smartRow('Base 地', 'base', res.base)
+    + smartRow('岗位描述', 'remark', res.remark, true)
+    + smartRow('投递链接', 'link', res.link)
+    + '</div>'
+    + '<div class="batch-foot">认不出的字段已留空，不会乱猜；上面可直接改，确认后才填入表单</div>'
+    + '<div class="smart-actions"><button type="button" id="sp-apply" class="btn-mini">填入表单</button>'
+    + '<button type="button" id="sp-cancel" class="btn-mini ghost">取消</button></div>';
+  const ap = $('#sp-apply'); if (ap) ap.addEventListener('click', applySmart);
+  const cc = $('#sp-cancel'); if (cc) cc.addEventListener('click', () => setSmartMode(false));
+}
+function runSmart() {
+  const ta = $('#f-smart-text');
+  const text = ta ? ta.value : '';
+  if (!text.trim()) { toast('先粘贴一段招聘信息'); return; }
+  const r = parseJobText(text);
+  if (!r.company && !r.position && !r.base && !r.remark && !r.link) toast('没认出可用字段，下面的框可以直接补');
+  renderSmartPreview(r);
+}
+// 只填空字段，已有内容一律不覆盖（避免把用户手填的内容冲掉）
+function applySmart() {
+  const val = k => { const el = $('#sp-' + k); return el ? String(el.value || '').trim() : ''; };
+  const u = draftUnits[0];
+  if (!u) return;
+  let filled = 0;
+  const skipped = [];
+  const co = val('company'), coEl = $('#f-company');
+  if (co && coEl) {
+    if (!coEl.value.trim()) { coEl.value = co; filled++; }
+    else if (coEl.value.trim() !== co) skipped.push('单位名称');
+  }
+  const lk = val('link'), lkEl = $('#f-link');
+  if (lk && lkEl && !lkEl.value.trim()) { lkEl.value = lk; filled++; }
+  const name = val('position'), base = val('base'), remark = val('remark');
+  if (name || base || remark) {
+    let p = u.positions.find(x => !(x.name || '').trim() && !(x.base || '').trim() && !(x.remark || '').trim());
+    if (!p && u.positions.length >= MAX_POSITIONS) toast(`最多 ${MAX_POSITIONS} 个岗位`);
+    if (!p) { p = newPosition(''); u.positions.push(p); }
+    if (p) {
+      if (name && !p.name) p.name = name;
+      if (base && !p.base) p.base = normalizeLocation(base);
+      if (remark && !p.remark) p.remark = remark;
+      filled++;
+    }
+  }
+  rerenderPositions(u);
+  updateUnitCount();
+  setSmartMode(false);
+  if (filled) toast(`已填入 ${filled} 项${skipped.length ? '；' + skipped.join('、') + '已有内容，未覆盖' : ''}`);
+  else toast('没有可填入的内容');
+}
+
 // ---------- 行内校验 ----------
 // 必填未过时：输入框标红 + 字段下方留一行错误文案 + toast 摘要 + 滚到该字段。
 // toast 2.2 秒会消失，行内文案不会，用户滚到别处也能看到是哪一项错了。
@@ -2312,6 +2553,20 @@ function bindEvents() {
   });
   $('#f-position-multi').addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); setBatchMode(false, { merge: true }); }
+  });
+  // 智能识别：粘贴招聘文本 → 解析出字段 → 可编辑预览 → 确认后填入
+  $('#f-pos-smart').addEventListener('mousedown', (e) => e.preventDefault());
+  $('#f-pos-smart').addEventListener('click', () => {
+    const btn = $('#f-pos-smart');
+    const open = btn.dataset.on !== '1';
+    setSmartMode(open);
+    if (open) $('#f-smart-text').focus();
+  });
+  $('#smart-run').addEventListener('click', runSmart);
+  $('#smart-cancel').addEventListener('click', () => setSmartMode(false));
+  $('#f-smart-text').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); setSmartMode(false); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSmart(); }
   });
   $('#btn-delete').addEventListener('click', () => deleteRecord());
 
