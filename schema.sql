@@ -60,7 +60,9 @@ insert into storage.buckets (id, name, public)
 values ('remark-media', 'remark-media', false)
 on conflict (id) do update set public = false;
 
-alter table storage.objects enable row level security;
+-- 注意：storage.objects 是 Supabase 托管的系统表（owner 不是你），平台默认已启用行级安全，
+-- 不要执行 alter table storage.objects enable row level security —— 会报 42501 must be owner of table objects。
+-- 只加策略即可。
 
 drop policy if exists "remark-media own select" on storage.objects;
 drop policy if exists "remark-media own insert" on storage.objects;
