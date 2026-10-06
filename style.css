@@ -367,6 +367,23 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
 .sp-row { display: flex; align-items: flex-start; gap: 10px; }
 .sp-lab { flex: 0 0 68px; font-size: 12px; color: var(--text2); line-height: 28px; }
 .sp-row input, .sp-row textarea { flex: 1; min-width: 0; }
+/* 不进表单的那几项（任职要求 / 薪资 / 人数 / 联系方式 / 截止）只做核对，不填表 */
+.sp-extra {
+  margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  border: 1px dashed var(--border); background: var(--bg2, var(--card));
+  display: grid; gap: 6px;
+}
+.sp-extra-t { font-size: 12px; color: var(--text2); }
+.sp-kv { display: flex; gap: 10px; font-size: 12px; line-height: 1.6; }
+.sp-kv > span { flex: 0 0 68px; color: var(--text2); }
+.sp-kv > b { flex: 1; min-width: 0; font-weight: 500; color: var(--text); word-break: break-all; }
+.sp-kv.col { display: block; }
+.sp-kv.col > span { display: block; margin-bottom: 4px; }
+.sp-ol { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--text); }
+.sp-check {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-size: 12px; color: var(--text2); cursor: pointer;
+}
 /* 暗色下沿用变量即可；这里不写死任何颜色，避免暗色主题漏改 */
 /* 单位名称 / 集团名称 并排占第一行，各自标签在上，省掉一整行 */
 .fr2 { display: flex; gap: 12px; align-items: flex-start; }

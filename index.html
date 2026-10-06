@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261006-4" data-app>
-<link rel="stylesheet" href="style.css?v=20261006-4">
+<link rel="preload" as="script" href="app.js?v=20261006-5" data-app>
+<link rel="stylesheet" href="style.css?v=20261006-5">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -202,7 +202,7 @@
               <div class="batch-foot">点别处或右上角「收起」即并入上方列表，重复的会自动跳过</div>
             </div>
             <div id="smart-box" class="batch-box hidden">
-              <textarea id="f-smart-text" rows="3" placeholder="粘贴招聘信息，例如：&#10;字节跳动&#10;Java 后端开发工程师&#10;工作地点：北京"></textarea>
+              <textarea id="f-smart-text" rows="4" placeholder="整段粘贴招聘信息即可，不用管格式。例如：&#10;招聘机构：江西省分行&#10;工作地点：江西省南昌市&#10;岗位职责：主要从事人工智能、数据挖掘分析相关工作"></textarea>
               <div class="smart-actions">
                 <button type="button" id="smart-run" class="btn-mini">识别</button>
                 <button type="button" id="smart-cancel" class="btn-mini ghost">取消</button>
