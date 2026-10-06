@@ -389,12 +389,55 @@ async function uploadImage(file) {
     contentType: blob.type, upsert: false,
   });
   if (error) throw new Error(error.message || '上传失败');
-  const { data } = sb.storage.from(IMG_BUCKET).getPublicUrl(path);
-  return { path, url: data.publicUrl, w: width, h: height, size: blob.size };
+  // 桶已私有化：图片不再有公开 URL，只能取带时效的签名 URL（渲染时会由 hydrateImages 统一刷新）
+  let signedUrl = '';
+  try {
+    const { data } = await sb.storage.from(IMG_BUCKET).createSignedUrl(path, SIGNED_TTL);
+    signedUrl = (data && data.signedUrl) || '';
+  } catch (e) { /* 文件已上传成功，签名这次取不到就等下次渲染 hydrateImages 再补 */ }
+  return { path, url: signedUrl, w: width, h: height, size: blob.size };
 }
-function publicUrlOf(path) {
-  if (!path) return '';
-  try { return sb.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl; } catch (e) { return ''; }
+// ===== 附件读取：桶私有化后只能用签名 URL 访问（带时效，且只对当前登录用户有效） =====
+const SIGNED_TTL = 3600;                 // 签名 URL 有效期（秒）
+const signedCache = new Map();           // path -> { url, exp }：同一张图在一次会话里只签一次
+function purgeSignedCache() { signedCache.clear(); }
+// 批量换签名：优先用缓存，只对缺的部分发一次 createSignedUrls
+async function signedUrlsOf(paths) {
+  const map = new Map();
+  const list = [...new Set((paths || []).filter(Boolean))];
+  if (!list.length) return map;
+  const now = Date.now();
+  const miss = [];
+  for (const p of list) {
+    const hit = signedCache.get(p);
+    if (hit && hit.exp > now) map.set(p, hit.url); else miss.push(p);
+  }
+  if (!miss.length) return map;
+  try {
+    const { data, error } = await sb.storage.from(IMG_BUCKET).createSignedUrls(miss, SIGNED_TTL);
+    if (!error && Array.isArray(data)) {
+      for (const it of data) {
+        if (it && it.path && it.signedUrl) {
+          map.set(it.path, it.signedUrl);
+          signedCache.set(it.path, { url: it.signedUrl, exp: now + (SIGNED_TTL - 120) * 1000 });
+        }
+      }
+    }
+  } catch (e) { /* 这次取不到就留空，下次渲染会再试 */ }
+  return map;
+}
+// 渲染完再回填 src：所有 <img data-path> 拿到签名 URL 才显示，同时补 data-preview 供点开看大图
+async function hydrateImages(root) {
+  const els = [...(root || document).querySelectorAll('img[data-path]')]
+    .filter(el => el.dataset.path && !el.dataset.loaded);
+  if (!els.length) return;
+  const map = await signedUrlsOf(els.map(el => el.dataset.path));
+  for (const el of els) {
+    el.dataset.loaded = '1';
+    const url = map.get(el.dataset.path) || '';
+    if (url) { el.src = url; el.dataset.preview = url; }
+    else el.classList.add('img-broken');
+  }
 }
 // 删记录 / 删图片时清存储桶。失败只提示，不阻断主流程（记录已经删掉了，图片属于残留）
 async function removeImageFiles(paths) {
@@ -1193,6 +1236,7 @@ function renderPositions(unit, container) {
   }
   updateUnitCount();
   container.querySelectorAll('.pi-remark').forEach(autoGrowRemark);   // 已有长描述按内容对齐高度
+  hydrateImages(container);   // 附件走签名 URL：渲染完统一回填 src
 }
 function findUnit(key) { return draftUnits.find(u => u.key === key); }
 // 岗位行图片的点击分发：添加 / 删除 / 点开预览。两个岗位区共用。
@@ -1300,8 +1344,7 @@ function imgStripHTML(unit, p, i) {
   if (!imgs.length) return '';
   return `<div class="p-imgs">
     ${imgs.map((im, k) => `<span class="p-img">
-      <img src="${esc(im.url || publicUrlOf(im.path))}" alt="附件 ${k + 1}" loading="lazy"
-           data-preview="${esc(im.url || publicUrlOf(im.path))}">
+      <img data-path="${esc(im.path)}" alt="附件 ${k + 1}" loading="lazy">
       <button type="button" class="p-img-x" data-uk="${unit.key}" data-pk="${p.key}" data-imgdel="${k}"
               aria-label="删除这张附件">×</button>
     </span>`).join('')}
@@ -1907,8 +1950,7 @@ function renderSheet(id) {
       <div class="sheet-field">
         <div class="sheet-field-label">岗位附件（${imgs.length}）</div>
         <div class="sheet-imgs">${imgs.map((im, k) => `<img class="sheet-img"
-           src="${esc(im.url || publicUrlOf(im.path))}" alt="附件 ${k + 1}" loading="lazy"
-           data-preview="${esc(im.url || publicUrlOf(im.path))}">`).join('')}</div>
+           data-path="${esc(im.path)}" alt="附件 ${k + 1}" loading="lazy">`).join('')}</div>
       </div>`;
   }
 
@@ -1942,6 +1984,7 @@ function renderSheet(id) {
       <button class="btn ghost" data-edit="${rec.id}">编辑全部</button>
       <button class="btn danger" data-del="${rec.id}">删除</button>
     </div>`;
+  hydrateImages($('#sheet-body'));   // 附件走签名 URL：渲染完统一回填 src
 }
 async function patchSheetDates(id, dates, msg) {
   const ref = records.find(r => r.id === id); if (!ref) return;
@@ -2275,7 +2318,7 @@ function bindEvents() {
   // 账户
   $('#btn-export').addEventListener('click', exportCSV);
   $('#btn-fix-base').addEventListener('click', normalizeAllBases);
-  $('#btn-signout').addEventListener('click', () => sb.auth.signOut());
+  $('#btn-signout').addEventListener('click', () => { purgeSignedCache(); sb.auth.signOut(); });
 
   // 安卓返回键：先关掉最上面那层覆盖（详情弹层 / 编辑页），没有覆盖层才真的离开页面。
   // 少了这条监听，覆盖层不在历史栈里时按返回会直接退出应用。

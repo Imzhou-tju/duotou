@@ -121,7 +121,7 @@
 | 后端 | Supabase（Postgres + Auth + Row Level Security） |
 | 部署 | GitHub Pages 静态托管，PWA 可安装 |
 | 数据 | 单表 `applications`，`stage_dates` 用 JSONB 存各阶段日期，`group_name` 做显示层聚合，`remark_images` 用 JSONB 存岗位附件 |
-| 图片 | Supabase Storage 公开桶 `remark-media`，浏览器端先压缩再上传；写 / 删权限按 `{用户id}/` 目录前缀做 RLS |
+| 图片 | Supabase Storage **私有桶** `remark-media`，浏览器端先压缩再上传；读 / 写 / 改 / 删由 `storage.objects` 策略按 `{用户id}/` 目录前缀限制。私有桶没有公开直链，渲染时用对象 `path` 换带时效的签名 URL（`createSignedUrls`，默认 1 小时） |
 
 ## 📁 目录结构
 

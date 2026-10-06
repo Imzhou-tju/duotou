@@ -262,6 +262,8 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   width: 84px; height: 84px; object-fit: cover; border-radius: 8px;
   border: 1px solid var(--border); background: var(--card); cursor: zoom-in; display: block;
 }
+/* 签名 URL 回填前 / 取签名失败：隐藏 alt 文字，只留占位框 */
+img[data-path]:not([src]), img.img-broken { color: transparent; }
 /* 点开看大图：铺满屏幕，点空白或 × 关闭 */
 .img-viewer {
   position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.88);
