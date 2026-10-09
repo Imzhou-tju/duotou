@@ -158,6 +158,24 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 16px 16px calc(var(--tab
 .hs-num { font-size: 26px; font-weight: 700; color: var(--on-hero); }
 .hs-label { font-size: 12px; color: var(--on-hero-2); margin-top: 4px; }
 
+/* ---------- 未保存草稿提示条 ---------- */
+.draft-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--brand-soft); border: 1px solid var(--line-brand);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px;
+}
+.db-main { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.db-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); }
+.db-text { font-size: 13px; color: var(--text); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; }
+.db-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.db-btn {
+  font-size: 13px; line-height: 1; padding: 8px 12px; cursor: pointer;
+  border-radius: 9px; border: none; background: var(--brand); color: var(--on-brand); font-weight: 600;
+}
+.db-btn.ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.db-btn:active { opacity: .85; }
+#btn-discard-draft { margin-bottom: 10px; }
+
 /* ---------- 通用组件 ---------- */
 .card { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
 .sec-title { font-size: 14px; font-weight: 600; color: var(--text2); margin: 18px 0 10px; }
@@ -857,8 +875,8 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
   /* 「添加岗位」是条目级操作，桌面端收成小按钮（移动端保留整行，方便拇指点） */
   .p-add { width: auto; padding: 7px 14px; border-radius: 8px; font-size: 12px; }
 
-  /* 删除按钮不拉满 */
-  #btn-delete { display: block; max-width: 360px; margin: 8px auto 0; }
+  /* 删除 / 放弃草稿按钮不拉满 */
+  #btn-delete, #btn-discard-draft { display: block; max-width: 360px; margin: 8px auto 0; }
 
   /* 日期行桌面端列宽放宽 */
   .date-name { width: 64px; }

@@ -50,6 +50,14 @@ let stageScope = null;
 let draftUnits = [newUnit()];   // 表单里的单位列表：每个单位下挂多个岗位；单个单位模式只用第一个单位来装岗位
 let groupEditStageDates = null;   // 集团模式编辑已有记录时，保留该记录原有的各阶段日期（投递日由行内输入覆盖）
 let groupEditStage = '投递';
+// ---------- 草稿自动保存 ----------
+// 编辑页填写过程中持续把表单状态快照到 localStorage（按用户隔离），关闭页面 / 中断后能恢复。
+// 纯前端方案，不动数据库；图片已在选图时上传到私有桶，草稿只记 path，恢复时重新签 URL。
+const DRAFT_PREFIX = 'duotou-draft:';
+let draftPollTimer = null;      // 编辑页可见时的轮询定时器（每秒比对一次，变了才写）
+let lastDraftSnapshot = '';     // 上次写进 localStorage 的序列化串，避免空转重写
+let restoringDraft = false;     // 正在恢复草稿：renderEdit 走恢复分支
+let draftScratch = null;        // 恢复草稿时暂存「游离字段」（公司名 / 链接，不在 draftUnits 里）
 let feedFilter = 'all';
 let searchState = { kw: '', stage: '全部', sort: 'update' };
 const PAGE_SIZE = 20;      // 列表每页展示的「卡片项」数（集团卡 / 单位卡 / 单卡，不会劈开一个单位）
@@ -626,6 +634,7 @@ function cancelEdit() {
 
 // ---------- 视图切换 ----------
 function showView(name) {
+  if (name !== 'edit') stopDraftPolling();   // 离开编辑页：停轮询（草稿由保存成功清除 / 取消保留，轮询已持续落盘）
   currentView = name;
   $$('.view').forEach(v => v.classList.add('hidden'));
   $('#view-auth').classList.add('hidden');
@@ -942,7 +951,25 @@ function listEmptyHTML(kind) {
 }
 
 // ---------- 首页 ----------
+// 草稿提示条：feed 顶部显示「有未保存的投递草稿」，带单位 / 岗位数，供继续填写或丢弃
+function renderDraftBanner() {
+  const banner = $('#draft-banner');
+  if (!banner) return;
+  const d = readDraft();
+  if (d && !draftIsEmpty(d)) {
+    const sum = draftSummary(d);
+    const bits = [];
+    if (d.mode === 'group' && d.groupName) bits.push(d.groupName);
+    else if (d.mode === 'single' && d.company) bits.push(d.company);
+    if (sum.pos) bits.push(`${sum.pos} 个岗位`);
+    $('#draft-banner-text').textContent = '有未保存的投递草稿' + (bits.length ? `（${bits.join(' · ')}）` : '');
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
 function renderFeed() {
+  renderDraftBanner();
   const err = loadState === 'error';
   searchHitMap.clear();       // 首页不做命中标注，清掉上一次搜索留下的标注
   // 统计条：已投递 = 全部投递记录数（每条都算投过）；一面/二面/Offer 按该阶段计数（拒绝/放弃不上统计条）
@@ -1097,7 +1124,123 @@ function renderSearch() {
 }
 
 // ---------- 编辑 ----------
+// ---------- 草稿自动保存（localStorage，按用户隔离） ----------
+// 编辑页可见期间每秒轮询比对一次，状态变了就写；关闭页面走 beforeunload 兜底落盘。
+// 草稿只存文本 / 图片 path，不存签名 URL（会过期），恢复时由 hydrateImages 重新签。
+function draftStorageKey() {
+  const uid = user && user.id ? user.id : 'anon';
+  return DRAFT_PREFIX + uid;
+}
+function hasDraft() {
+  try { return !!localStorage.getItem(draftStorageKey()); } catch (e) { return false; }
+}
+function readDraft() {
+  try {
+    const raw = localStorage.getItem(draftStorageKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function clearDraft() {
+  try { localStorage.removeItem(draftStorageKey()); } catch (e) { /* 忽略 */ }
+  lastDraftSnapshot = '';
+}
+function draftUnitsSnapshot() {
+  return draftUnits.map(u => ({
+    recId: u.recId || null,
+    sub: u.sub || '',
+    date: u.date || '',
+    positions: (u.positions || []).map(p => ({
+      recId: p.recId || null,
+      name: p.name || '',
+      base: p.base || '',
+      remark: p.remark || '',
+      imgs: (p.imgs || []).map(x => (x && x.path ? { path: x.path } : null)).filter(Boolean),
+      stage: p.stage || '投递',
+      stageDates: { ...(p.stageDates || {}) },
+    })),
+  }));
+}
+function buildDraft() {
+  const single = draftMode === 'single';
+  return {
+    mode: draftMode,
+    editingId: editingId || null,
+    company: single ? ($('#f-company').value || '') : '',
+    groupSingle: single ? ($('#f-group-single').value || '') : '',
+    groupName: single ? '' : ($('#f-group').value || ''),
+    link: $('#f-link').value || '',
+    units: draftUnitsSnapshot(),
+    stage: draftStage || '投递',
+    stageDates: { ...(draftDates || {}) },
+    groupEditStageDates: groupEditStageDates ? { ...groupEditStageDates } : null,
+    groupEditStage: groupEditStage || '投递',
+    savedAt: Date.now(),
+  };
+}
+// 空草稿不落盘：只判断用户主动填的文本 / 图片；投递日、各阶段日期等有默认值的字段不算「内容」
+function draftIsEmpty(d) {
+  if (!d) return true;
+  if ((d.company || '').trim() || (d.groupSingle || '').trim() || (d.groupName || '').trim() || (d.link || '').trim()) return false;
+  for (const u of (d.units || [])) {
+    if ((u.sub || '').trim()) return false;
+    for (const p of (u.positions || [])) {
+      if ((p.name || '').trim() || (p.base || '').trim() || (p.remark || '').trim()) return false;
+      if ((p.imgs || []).length) return false;
+    }
+  }
+  return true;
+}
+function persistDraft() {
+  if (!user) return;   // 未登录进不了编辑页，也没有草稿
+  let d = null;
+  try { d = buildDraft(); } catch (e) { return; }
+  if (draftIsEmpty(d)) { clearDraft(); return; }
+  const s = JSON.stringify(d);
+  if (s === lastDraftSnapshot) return;
+  try { localStorage.setItem(draftStorageKey(), s); lastDraftSnapshot = s; } catch (e) { /* 存储满 / 隐私模式，忽略 */ }
+}
+function startDraftPolling() {
+  stopDraftPolling();
+  lastDraftSnapshot = '';   // 重新进入编辑页，从头比对
+  draftPollTimer = setInterval(persistDraft, 1000);
+}
+function stopDraftPolling() {
+  if (draftPollTimer) { clearInterval(draftPollTimer); draftPollTimer = null; }
+}
+// 草稿概要（单位数 / 岗位数）：feed 提示条上用，让人一眼知道草稿里填了多少
+function draftSummary(d) {
+  let pos = 0, units = 0;
+  for (const u of (d && d.units) || []) { units++; pos += (u.positions || []).length; }
+  return { units, pos };
+}
+// 恢复草稿：反序列化回表单状态（岗位 key 重新分配、选择范围重置为「全部」），再进编辑页
+function restoreDraft(d) {
+  draftMode = d.mode === 'group' ? 'group' : 'single';
+  editingId = d.editingId || null;
+  draftGroup = draftMode === 'group' ? (d.groupName || '') : (d.groupSingle || '');
+  draftUnits = (d.units || []).map(u => ({
+    key: nextKey('u'), recId: u.recId || null, sub: u.sub || '', date: u.date || '',
+    positions: (u.positions || []).map(p => ({
+      key: nextKey('p'), recId: p.recId || null, name: p.name || '', base: p.base || '', remark: p.remark || '',
+      imgs: (p.imgs || []).map(x => ({ path: x.path })),
+      stage: p.stage || '投递', stageDates: { ...(p.stageDates || {}) },
+    })),
+  }));
+  if (!draftUnits.length) draftUnits = [newUnit()];
+  draftStage = d.stage || '投递';
+  draftDates = { ...(d.stageDates || {}) };
+  stageScope = null;
+  groupEditStageDates = d.groupEditStageDates ? { ...d.groupEditStageDates } : null;
+  groupEditStage = d.groupEditStage || '投递';
+  draftScratch = { company: d.company || '', groupSingle: d.groupSingle || '', groupName: d.groupName || '', link: d.link || '' };
+  restoringDraft = true;
+  if (overlayKind === 'sheet') closeSheet();
+  showView('edit');
+  overlayOpen('edit');
+}
+
 function renderEdit() {
+  if (restoringDraft) { renderEditFromDraft(); return; }
   const rec = editingId ? records.find(r => r.id === editingId) : null;
   $('#edit-title').textContent = rec ? '编辑投递' : '添加投递';
   $('#btn-delete').classList.toggle('hidden', !rec);
@@ -1155,6 +1298,33 @@ function renderEdit() {
   $('#dates-toggle').setAttribute('aria-expanded', 'false');
   $('#edit-dates').classList.add('hidden');
   updateGroupHint();
+  $('#btn-discard-draft').classList.toggle('hidden', !hasDraft());
+  startDraftPolling();
+}
+// 从草稿恢复进入编辑页：状态已在 restoreDraft 里回填好，这里只把 DOM 渲染出来，不再走默认初始化
+function renderEditFromDraft() {
+  restoringDraft = false;
+  const rec = editingId ? records.find(r => r.id === editingId) : null;
+  $('#edit-title').textContent = rec ? '编辑投递' : '继续填写';
+  $('#btn-delete').classList.toggle('hidden', !rec);
+  setModeUI(draftMode);
+  renderUnits();
+  renderPositions(draftUnits[0], $('#single-positions'));
+  $('#f-group').value = draftMode === 'group' ? (draftScratch.groupName || '') : '';
+  $('#f-group-single').value = draftMode === 'single' ? (draftScratch.groupSingle || '') : '';
+  $('#group-list').innerHTML = groupNameOptions().map(g => `<option value="${esc(g)}">`).join('');
+  $('#f-company').value = draftScratch.company || '';
+  setBatchMode(false);
+  $('#f-link').value = draftScratch.link || '';
+  $('#edit-stages').innerHTML = ALL_STAGES.map(s =>
+    `<span class="chip ${draftStage === s ? 'on' : ''}" data-stage="${s}" style="${draftStage === s ? 'background:' + COLORS[s] + ';color:#fff' : ''}" role="button" tabindex="0">${s}</span>`).join('');
+  renderDateRows();
+  clearAllErrors();
+  $('#dates-toggle').setAttribute('aria-expanded', 'false');
+  $('#edit-dates').classList.add('hidden');
+  updateGroupHint();
+  $('#btn-discard-draft').classList.toggle('hidden', !hasDraft());
+  startDraftPolling();
 }
 // 单个单位 / 集团投递 模式切换（两套表单字段不同）
 // 集团模式下：投递日在单位卡里填；Base 地 / 备注只按岗位填；阶段与各阶段日期区不适用（各条记录在详情里推进）
@@ -2244,6 +2414,8 @@ async function doSaveSingleRecord() {
   toast(gName
     ? (n > 1 ? `已添加 ${n} 条投递，归入「${gName}」` : `已保存，归入「${gName}」`)
     : (n > 1 ? `已添加 ${n} 条投递` : '已保存'));
+  stopDraftPolling();   // 保存成功：草稿使命完成，停轮询并清除，别让残留表单又被写回草稿
+  clearDraft();
   editingId = null;
   draftGroup = '';
   await loadRecords();
@@ -2321,6 +2493,8 @@ async function doSaveGroupRecord() {
     await removeStaleImages(before, p2.remark_images);
   }
   toast(editingId ? '已保存' : (payload.length > 1 ? `已添加 ${payload.length} 条投递` : '已保存'), 'success');
+  stopDraftPolling();   // 保存成功：停轮询并清除草稿
+  clearDraft();
   editingId = null;
   draftGroup = '';
   await loadRecords();
@@ -2730,8 +2904,21 @@ function bindEvents() {
 
   // 底部标签栏
   $$('.tab').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
-  // 悬浮添加
-  $('#fab').addEventListener('click', () => openEditView());
+  // 悬浮添加：有未保存草稿则直接恢复，否则新开空表单（草稿提示条也提供「丢弃」入口）
+  $('#fab').addEventListener('click', () => {
+    const d = readDraft();
+    if (d && !draftIsEmpty(d)) restoreDraft(d);
+    else openEditView();
+  });
+
+  // 草稿提示条：继续填写 / 丢弃；编辑页里的「放弃草稿」按钮清空后回到全新空表单
+  $('#draft-resume').addEventListener('click', () => {
+    const d = readDraft();
+    if (d && !draftIsEmpty(d)) restoreDraft(d);
+    else renderDraftBanner();
+  });
+  $('#draft-discard').addEventListener('click', () => { clearDraft(); renderDraftBanner(); });
+  $('#btn-discard-draft').addEventListener('click', () => { clearDraft(); openEditView(); });
 
   // feed 筛选
   $('#feed-filters').addEventListener('click', (e) => {
@@ -3048,5 +3235,9 @@ function renderEditStagesOnly() {
 }
 
 // ---------- 启动 ----------
+// 关闭 / 刷新页面时兜底落盘：轮询有 1 秒间隔，最后几秒的输入可能还在内存里没写进 localStorage
+window.addEventListener('beforeunload', () => {
+  if (draftPollTimer) persistDraft();
+});
 bindEvents();
 initAuth();
