@@ -281,6 +281,13 @@ select { appearance: none; -webkit-appearance: none; padding-right: 34px;
   font-size: 10px; line-height: 11px; text-align: center;
 }
 .p-img-tip { font-size: 11px; color: var(--text3); margin-left: auto; }
+/* 岗位行上的阶段徽章：多岗位时展示各岗位各自的阶段（单岗位时阶段区就在下方，不重复占行） */
+.p-stage-line { margin-top: 8px; padding-left: var(--pind); display: flex; align-items: center; }
+.pi-stage {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 9px;
+  font-size: 11px; font-weight: 600; line-height: 1; color: #fff;   /* 彩底固定白字，亮暗主题通用 */
+  border-radius: 10px; white-space: nowrap;
+}
 /* 详情弹层里的图片 */
 .sheet-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
 .sheet-img {
@@ -375,6 +382,17 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
 }
 .batch-box textarea { padding: 9px 11px; font-size: 14px; background: var(--field); }
 .batch-foot { font-size: 12px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+/* 阶段「应用范围」选择器：勾选哪些岗位，阶段 chip / 各阶段日期就写到哪些岗位（默认全部） */
+.scope-box {
+  margin-bottom: 10px; padding: 8px 12px; border-radius: 12px;
+  border: 1px dashed var(--line-dash); background: var(--surface-2);
+}
+.scope-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text2); padding: 2px 0 6px; }
+.scope-all-btn { font-size: 12px; line-height: 1; padding: 0; cursor: pointer; color: var(--brand); background: none; border: none; }
+.scope-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; font-size: 13px; color: var(--text); cursor: pointer; }
+.scope-row + .scope-row { border-top: 1px solid var(--border); }
+.scope-row input { accent-color: var(--brand); width: 16px; height: 16px; flex-shrink: 0; }
+.scope-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 智能识别：灰度入口，刻意做成弱化的文字链，不抢「批量粘贴」胶囊的视觉重心 */
 .pos-link {
   font-size: 12px; line-height: 1; padding: 0; cursor: pointer;

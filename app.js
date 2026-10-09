@@ -25,7 +25,11 @@ const MAX_IMG_INPUT_MB = 12;    // 选图时的原始体积上限
 let uidSeq = 0;
 function nextKey(p) { return p + (++uidSeq); }
 // Base 地 / 岗位描述挂在「岗位」上：同一个单位的不同岗位，Base 地和描述可能不一样（如总部岗 vs 外地岗）
-function newPosition(name) { return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '', imgs: [] }; }
+// 阶段同样按岗位独立：每个岗位自带 stage / stageDates，阶段区只是批量写入这些岗位的工具
+function newPosition(name) {
+  return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '', imgs: [],
+    stage: draftStage || '投递', stageDates: { ...(draftDates || {}) } };
+}
 function newUnit() {
   return { key: nextKey('u'), recId: null, sub: '', date: todayStr(), positions: [newPosition()] };
 }
@@ -37,11 +41,15 @@ let records = [];
 let editingId = null;
 let draftGroup = '';
 let draftMode = 'single';   // 'single' 单个单位 | 'group' 集团投递
+// 这三个要排在 draftUnits 前面：draftUnits 初始化时 newUnit() → newPosition() 会读它们
+let draftStage = '投递';
+let draftDates = {};
+// 阶段应用范围：null = 全部岗位（新增岗位自动纳入）；Set<岗位key> = 只应用到勾选的岗位。
+// 只在单个单位模式下且岗位数 > 1 时可改，其余场景恒为 null
+let stageScope = null;
 let draftUnits = [newUnit()];   // 表单里的单位列表：每个单位下挂多个岗位；单个单位模式只用第一个单位来装岗位
 let groupEditStageDates = null;   // 集团模式编辑已有记录时，保留该记录原有的各阶段日期（投递日由行内输入覆盖）
 let groupEditStage = '投递';
-let draftStage = '投递';
-let draftDates = {};
 let feedFilter = 'all';
 let searchState = { kw: '', stage: '全部', sort: 'update' };
 const PAGE_SIZE = 20;      // 列表每页展示的「卡片项」数（集团卡 / 单位卡 / 单卡，不会劈开一个单位）
@@ -504,7 +512,8 @@ function commitFocusDate(el, t) {
     draftDates[el.dataset.dp] = t;
     const derived = stageFromDates(draftDates);
     if (derived) draftStage = derived;
-    renderEditStagesOnly();      // 只刷阶段 chip，不动日期行，输入框焦点保留
+    applyBufferToTargets();      // 写到应用范围里的岗位并刷新徽章；只动徽章和范围列表，日期输入框焦点保留
+    renderEditStagesOnly();
   } else if (el.dataset.gf === 'date') {
     const u = draftUnits.find(x => x.key === el.dataset.uk);
     if (u) u.date = t;
@@ -1114,10 +1123,13 @@ function renderEdit() {
     groupEditStageDates = rec && rec.stage_dates ? { ...rec.stage_dates } : null;
     groupEditStage = rec ? (rec.stage || '投递') : '投递';
   } else {
-    // 单个单位模式：单位 / 链接 / 日期在外层共用字段上；Base / 备注挂在岗位行里，这里只需要装岗位
+    // 单个单位模式：单位 / 链接在外层共用字段上；Base / 备注 / 阶段挂在岗位行里，这里只需要装岗位。
+    // 阶段按岗位初始化：编辑时带回原记录的 stage / stage_dates，新增默认「投递 = 今天」
     draftUnits = [{
       key: nextKey('u'), recId: rec ? rec.id : null,
-      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '', imgs: rec ? imgsOf(rec) : [] }],
+      positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '', imgs: rec ? imgsOf(rec) : [],
+        stage: rec ? (rec.stage || '投递') : '投递',
+        stageDates: rec ? { ...(rec.stage_dates || {}) } : { '投递': todayStr() } }],
     }];
     groupEditStageDates = null;
     groupEditStage = '投递';
@@ -1206,6 +1218,8 @@ function renderUnits() {
 // 岗位行列表：集团模式下渲染在单位卡内，单个单位模式下渲染在外层岗位区
 function renderPositions(unit, container) {
   if (!unit || !container) return;
+  // 阶段徽章只在单模式多岗位时出现：单岗位的阶段区就在下方，集团模式的阶段在详情里推进，都不重复占行
+  const showStage = draftMode === 'single' && unit.positions.length > 1;
   container.innerHTML = unit.positions.map((p, i) => `
     <div class="p-item">
       <div class="p-top">
@@ -1217,6 +1231,7 @@ function renderPositions(unit, container) {
         <button type="button" class="pi-del" data-uk="${unit.key}" data-pdel="${p.key}"
                 ${unit.positions.length <= 1 ? 'hidden' : ''} aria-label="删除该岗位">×</button>
       </div>
+      ${showStage ? `<div class="p-stage-line"><span class="pi-stage" style="background:${COLORS[posStageOf(p)] || '#9AA0A6'}">${esc(posStageOf(p))}</span></div>` : ''}
       <div class="p-line p-desc-line">
         <textarea class="pi-remark" data-uk="${unit.key}" data-pk="${p.key}" data-pr="1" rows="1"
                   placeholder="岗位描述，如：做 AI 应用后端，Java + 微服务" aria-label="岗位 ${i + 1} 的岗位描述">${esc(p.remark || '')}</textarea>
@@ -1235,6 +1250,7 @@ function renderPositions(unit, container) {
     if (nEl) nEl.textContent = `（${unit.positions.length}）`;
   }
   updateUnitCount();
+  updateScopeUI();   // 岗位增删后刷新「应用范围」入口（显隐 / 文案 / 列表）
   container.querySelectorAll('.pi-remark').forEach(autoGrowRemark);   // 已有长描述按内容对齐高度
   hydrateImages(container);   // 附件走签名 URL：渲染完统一回填 src
 }
@@ -1479,14 +1495,83 @@ function renderDateRows() {
   const meta = $('#dates-meta');
   if (meta) meta.textContent = n ? `已填 ${n} 项` : '未填写';
 }
-function collectForm() {
-  const stage_dates = {};
-  for (const s of ALL_STAGES) {
-    const v = (draftDates[s] || '').trim();
-    if (v) stage_dates[s] = v;
+
+// ---------- 岗位级阶段：应用范围 + 批量写入 ----------
+// 每个岗位自带 stage / stageDates（与落库字段一一对应）；「当前阶段」区只是往目标岗位批量写入的工具。
+// 写入规则与原全局行为一致：日期是唯一事实来源，阶段由已填日期里最晚的推导，推导不出退回手选值。
+function posStageOf(p) { return stageFromDates(p.stageDates) || p.stage || '投递'; }
+// 阶段 / 日期改动要写到哪些岗位：null = 全部；否则取勾选且仍存在的岗位（删岗后集合自动收缩）
+function stageScopeTargets() {
+  const u = draftUnits[0];
+  if (!u) return [];
+  if (!stageScope) return u.positions;
+  return u.positions.filter(p => stageScope.has(p.key));
+}
+// 应用范围变化后，阶段区（chips + 日期行）回显第一个目标岗位的数据：看到的就是接下来要写到的
+function syncBufferFromScope() {
+  const ts = stageScopeTargets();
+  if (!ts.length) return;
+  const p = ts[0];
+  draftDates = { ...(p.stageDates || {}) };
+  draftStage = stageFromDates(draftDates) || p.stage || '投递';
+  renderDateRows();
+  renderEditStagesOnly();
+}
+// 把阶段区的当前内容（draftStage + draftDates）整份写到目标岗位，并刷新岗位行上的阶段徽章
+function applyBufferToTargets() {
+  for (const p of stageScopeTargets()) {
+    p.stageDates = { ...draftDates };
+    p.stage = stageFromDates(draftDates) || draftStage || '投递';
   }
-  const derived = stageFromDates(stage_dates);
-  // Base 地 / 岗位描述按岗位走：collectForm 只管整单共用的字段（单位 / 集团 / 链接 / 阶段 / 日期）。
+  refreshPosStageBadges();
+}
+function refreshPosStageBadges() {
+  const cont = $('#single-positions');
+  const u = draftUnits[0];
+  if (!cont || !u) return;
+  const badges = cont.querySelectorAll('.pi-stage');
+  u.positions.forEach((p, i) => {
+    const el = badges[i]; if (!el) return;
+    const s = posStageOf(p);
+    el.textContent = s;
+    el.style.background = COLORS[s] || '#9AA0A6';
+  });
+  const box = $('#stage-scope-box');
+  if (box && !box.classList.contains('hidden')) renderScopeList();
+}
+function updateScopeBtn() {
+  const btn = $('#stage-scope-btn'); const u = draftUnits[0];
+  if (!btn || !u || draftMode !== 'single') return;
+  btn.textContent = stageScope ? `范围：已选 ${stageScopeTargets().length} 个岗位` : '范围：全部岗位';
+}
+function renderScopeList() {
+  const box = $('#scope-list'); const u = draftUnits[0];
+  if (!box) return;
+  if (!u || draftMode !== 'single') { box.innerHTML = ''; return; }
+  box.innerHTML = u.positions.map((p, i) => {
+    const checked = !stageScope || stageScope.has(p.key);
+    const s = posStageOf(p);
+    const nm = (p.name || '').trim() || ('岗位 ' + (i + 1));
+    return `<label class="scope-row"><input type="checkbox" data-scope-pk="${p.key}"${checked ? ' checked' : ''}><span class="scope-name">${esc(nm)}</span><span class="pi-stage" style="background:${COLORS[s] || '#9AA0A6'}">${esc(s)}</span></label>`;
+  }).join('');
+}
+// 范围入口只在「单个单位 + 多岗位」出现；其余场景（单岗位 / 集团模式）收起并复位为全部
+function updateScopeUI() {
+  const btn = $('#stage-scope-btn'), box = $('#stage-scope-box');
+  if (!btn || !box) return;
+  const multi = draftMode === 'single' && draftUnits[0] && draftUnits[0].positions.length > 1;
+  btn.classList.toggle('hidden', !multi);
+  if (!multi) {
+    stageScope = null;
+    box.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  updateScopeBtn();
+  if (!box.classList.contains('hidden')) renderScopeList();
+}
+function collectForm() {
+  // Base 地 / 岗位描述 / 阶段都按岗位走：collectForm 只管整单共用的字段（单位 / 集团 / 链接）。
   // 单个单位模式不再写 sub_unit（该字段只由集团投递模式的单位行填充）——
   // 不在这里带 sub_unit，编辑已有记录时也就不会把历史值清空。
   return {
@@ -1495,11 +1580,13 @@ function collectForm() {
       ? ($('#f-group').value.trim() || null)
       : ($('#f-group-single').value.trim() || null),
     link: $('#f-link').value.trim() || null,
-    stage: derived || draftStage || '投递',
-    stage_dates,
-    apply_date: stage_dates['投递'] || null,
     update_time: new Date().toISOString(),
   };
+}
+// 单条记录的阶段载荷：stage_dates 取岗位自己的，阶段由日期推导（推导不出退回手选值）
+function stagePayloadOf(p) {
+  const stage_dates = { ...(p.stageDates || {}) };
+  return { stage: stageFromDates(stage_dates) || p.stage || '投递', stage_dates, apply_date: stage_dates['投递'] || null };
 }
 // 批量粘贴：把 textarea 里的多行岗位并入某个单位的岗位列表（先填已有的空行，再新增）
 function mergePositionLines(u, text) {
@@ -2097,7 +2184,7 @@ async function doSaveSingleRecord() {
   const base = collectForm();
   if (!base.company) { failField('#f-company', '#err-company', '请填写单位名称'); return; }
   const u = draftUnits[0] || newUnit();
-  // 每个岗位一条记录：Base 地 / 备注取自该岗位自己的输入框，岗位全空也生成 1 条（只投单位不明岗位）
+  // 每个岗位一条记录：Base 地 / 备注 / 阶段取自该岗位自己的数据，岗位全空也生成 1 条（只投单位不明岗位）
   const list = [];
   const seen = new Set();
   for (const p of u.positions) {
@@ -2112,22 +2199,23 @@ async function doSaveSingleRecord() {
       base: normalizeLocation(p.base || '') || null,
       remark: (p.remark || '').trim() || null,
       imgs: p.imgs || [],
+      ...stagePayloadOf(p),
     });
   }
-  if (!list.length) list.push({ name: null, base: null, remark: null, imgs: [] });
+  if (!list.length) list.push({ name: null, base: null, remark: null, imgs: [], ...stagePayloadOf({ stage: draftStage, stageDates: draftDates }) });
   if (list.length > MAX_RECORDS) { toast(`一次最多提交 ${MAX_RECORDS} 条投递，请分批添加`); return; }
   let error = null, n = 0;
   if (editingId) {
     const first = list[0];
-    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark, remark_images: first.imgs }).eq('id', editingId);
+    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark, remark_images: first.imgs, stage: first.stage, stage_dates: first.stage_dates, apply_date: first.apply_date }).eq('id', editingId);
     error = r.error; n = 1;
     const rest = list.slice(1);
     if (!error && rest.length) {
-      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs })));
+      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, apply_date: x.apply_date })));
       error = r2.error; n += rest.length;
     }
   } else {
-    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs })));
+    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, apply_date: x.apply_date })));
     error = r.error; n = list.length;
   }
   if (error) { toast('保存失败：' + error.message, 'error'); return; }
@@ -2720,10 +2808,38 @@ function bindEvents() {
   // 编辑页
   $('#edit-stages').addEventListener('click', (e) => {
     const t = e.target.closest('[data-stage]'); if (!t) return;
+    // 没勾选任何岗位时拦一下：写了也没去处，提示比静默无效更不容易让人误以为已保存
+    if (!stageScopeTargets().length) { toast('请先在「范围」里勾选要应用的岗位'); return; }
     draftStage = t.dataset.stage;
     // 选中某阶段时，若该阶段尚无日期则自动记为今天（与详情页一致，少一次手动填日期）
     if (!draftDates[draftStage]) { draftDates[draftStage] = todayStr(); renderDateRows(); }
+    applyBufferToTargets();   // 写到应用范围里的岗位（全部或勾选的），并刷新岗位行上的阶段徽章
     renderEditStagesOnly();
+  });
+  // 应用范围：展开 / 收起岗位勾选列表；勾选变化即改写目标集合，chips 与日期行回显第一个目标岗位的数据
+  $('#stage-scope-btn').addEventListener('click', () => {
+    const box = $('#stage-scope-box');
+    const open = box.classList.contains('hidden');
+    box.classList.toggle('hidden', !open);
+    $('#stage-scope-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) renderScopeList();
+  });
+  $('#stage-scope-box').addEventListener('change', (e) => {
+    const t = e.target;
+    if (!t.dataset || !t.dataset.scopePk) return;
+    const u = draftUnits[0]; if (!u) return;
+    const set = new Set(stageScope || u.positions.map(p => p.key));
+    if (t.checked) set.add(t.dataset.scopePk); else set.delete(t.dataset.scopePk);
+    // 全勾 = 回到「全部岗位」：之后新增的岗位也自动纳入
+    stageScope = set.size === u.positions.length ? null : set;
+    syncBufferFromScope();
+    updateScopeBtn();
+  });
+  $('#scope-all-btn').addEventListener('click', () => {
+    stageScope = null;
+    syncBufferFromScope();
+    updateScopeBtn();
+    renderScopeList();
   });
   $('#edit-dates').addEventListener('change', (e) => {
     const dp = e.target.closest('[data-dp]');
@@ -2731,6 +2847,7 @@ function bindEvents() {
       draftDates[dp.dataset.dp] = dp.value || '';
       const derived = stageFromDates(draftDates);
       if (derived) draftStage = derived;
+      applyBufferToTargets();
       renderDateRows();
       renderEditStagesOnly();
     }
@@ -2751,6 +2868,7 @@ function bindEvents() {
       draftDates[td.dataset.today] = todayStr();
       const derived = stageFromDates(draftDates);
       if (derived) draftStage = derived;
+      applyBufferToTargets();
       renderDateRows();
       renderEditStagesOnly();
       return;
@@ -2760,6 +2878,7 @@ function bindEvents() {
       draftDates[yt.dataset.yesterday] = shiftDays(-1);
       const derived = stageFromDates(draftDates);
       if (derived) draftStage = derived;
+      applyBufferToTargets();
       renderDateRows();
       renderEditStagesOnly();
       return;
@@ -2770,6 +2889,7 @@ function bindEvents() {
       delete draftDates[cl.dataset.clear];
       const derived = stageFromDates(draftDates);
       draftStage = derived || '投递';
+      applyBufferToTargets();
       renderDateRows();
       renderEditStagesOnly();
     }
