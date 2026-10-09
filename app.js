@@ -680,7 +680,7 @@ async function doInitAuth() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     $('#view-auth').classList.remove('hidden');
     $('#auth-error').textContent = '请先在 config.js 里填入 SUPABASE_URL 和 SUPABASE_ANON_KEY';
-    $('#btn-signin').disabled = true; $('#btn-signup').disabled = true;
+    $('#btn-signin').disabled = true; $('#btn-open-signup').disabled = true; $('#btn-signup').disabled = true;
     return;
   }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -2568,35 +2568,56 @@ function authErrorZh(msg) {
 const AUTH_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // 登录/注册前的本地校验：不合法直接提示并聚焦，不发请求。
 // 否则空邮箱+空密码会被 Supabase 当成匿名注册，报出看不懂的 "Anonymous sign-ins are disabled"
-function authValidate(mode) {
-  const email = $('#auth-email').value.trim();
-  const pass = $('#auth-pass').value;
-  if (!email)               return { err: '请先填写邮箱', focus: '#auth-email' };
-  if (!AUTH_EMAIL_RE.test(email)) return { err: '邮箱格式不对，检查一下有没有写错', focus: '#auth-email' };
-  if (!pass)                return { err: '请先填写密码', focus: '#auth-pass' };
-  if (mode === 'signup' && pass.length < 6) return { err: '注册密码至少 6 位', focus: '#auth-pass' };
+// ids：{ email, pass } 分别指向登录卡或注册弹窗里的输入框
+function authValidate(mode, ids) {
+  const email = $(ids.email).value.trim();
+  const pass = $(ids.pass).value;
+  if (!email)               return { err: '请先填写邮箱', focus: ids.email };
+  if (!AUTH_EMAIL_RE.test(email)) return { err: '邮箱格式不对，检查一下有没有写错', focus: ids.email };
+  if (!pass)                return { err: '请先填写密码', focus: ids.pass };
+  if (mode === 'signup' && pass.length < 6) return { err: '注册密码至少 6 位', focus: ids.pass };
   return { email, pass };
 }
+function openSignupModal() {
+  const m = $('#signup-modal');
+  m.classList.remove('hidden');
+  $('#signup-error').textContent = '';
+  $('#signup-error').classList.remove('ok');
+  setTimeout(() => $('#signup-email').focus(), 30);
+}
+function closeSignupModal() {
+  $('#signup-modal').classList.add('hidden');
+}
 function bindEvents() {
-  // 登录 / 注册
+  // 登录：读登录卡的输入框
   $('#btn-signin').addEventListener('click', async () => {
-    $('#auth-error').textContent = '';
-    const v = authValidate('signin');
-    if (v.err) { $('#auth-error').textContent = v.err; $(v.focus).focus(); return; }
+    const errEl = $('#auth-error'); errEl.textContent = ''; errEl.classList.remove('ok');
+    const v = authValidate('signin', { email: '#auth-email', pass: '#auth-pass' });
+    if (v.err) { errEl.textContent = v.err; $(v.focus).focus(); return; }
     const { error } = await sb.auth.signInWithPassword({ email: v.email, password: v.pass });
-    if (error) { $('#auth-error').textContent = authErrorZh(error.message); return; }
+    if (error) { errEl.textContent = authErrorZh(error.message); return; }
     const { data } = await sb.auth.getSession();
     user = data.session.user;
     await enterApp();
   });
+  // 打开 / 关闭注册弹窗
+  $('#btn-open-signup').addEventListener('click', openSignupModal);
+  $$('#signup-modal [data-close-signup]').forEach(el => el.addEventListener('click', closeSignupModal));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#signup-modal').classList.contains('hidden')) closeSignupModal();
+  });
+  // 注册：读弹窗输入框，先校验两次密码一致
   $('#btn-signup').addEventListener('click', async () => {
-    $('#auth-error').textContent = '';
-    const v = authValidate('signup');
-    if (v.err) { $('#auth-error').textContent = v.err; $(v.focus).focus(); return; }
+    const errEl = $('#signup-error'); errEl.textContent = ''; errEl.classList.remove('ok');
+    const v = authValidate('signup', { email: '#signup-email', pass: '#signup-pass' });
+    if (v.err) { errEl.textContent = v.err; $(v.focus).focus(); return; }
+    if ($('#signup-pass2').value !== v.pass) {
+      errEl.textContent = '两次输入的密码不一致'; $('#signup-pass2').focus(); return;
+    }
     const { data, error } = await sb.auth.signUp({ email: v.email, password: v.pass });
-    if (error) { $('#auth-error').textContent = authErrorZh(error.message); return; }
-    if (data.session) { user = data.session.user; await enterApp(); }
-    else $('#auth-error').textContent = '注册成功！请先查收确认邮件，点邮件里的链接激活账号后再登录';
+    if (error) { errEl.textContent = authErrorZh(error.message); return; }
+    if (data.session) { closeSignupModal(); user = data.session.user; await enterApp(); }
+    else { errEl.classList.add('ok'); errEl.textContent = '注册成功！请先查收确认邮件，点邮件里的链接激活账号后再登录'; }
   });
 
   // 底部标签栏

@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261009-1" data-app>
-<link rel="stylesheet" href="style.css?v=20261009-1">
+<link rel="preload" as="script" href="app.js?v=20261009-2" data-app>
+<link rel="stylesheet" href="style.css?v=20261009-2">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -53,11 +53,26 @@
     <div class="logo">多投</div>
     <div class="sub">秋招投递记录 · 云端同步</div>
     <input id="auth-email" type="email" placeholder="邮箱" autocomplete="email">
-    <input id="auth-pass" type="password" placeholder="密码（注册需至少 6 位）" autocomplete="current-password">
+    <input id="auth-pass" type="password" placeholder="密码" autocomplete="current-password">
     <div id="auth-error" class="auth-error"></div>
     <button id="btn-signin" class="btn primary block">登录</button>
-    <button id="btn-signup" class="btn ghost block">注册新账号</button>
-    <div class="tip">首次使用：填邮箱密码 → 点「注册新账号」；之后直接「登录」</div>
+    <button type="button" id="btn-open-signup" class="btn-link block">还没有账号？注册一个</button>
+  </div>
+
+  <!-- 注册弹窗 -->
+  <div id="signup-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="signup-title">
+    <div class="modal-backdrop" data-close-signup></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <span id="signup-title" class="modal-title">注册新账号</span>
+        <button type="button" class="modal-x" data-close-signup aria-label="关闭">×</button>
+      </div>
+      <input id="signup-email" type="email" placeholder="邮箱" autocomplete="email">
+      <input id="signup-pass" type="password" placeholder="密码（至少 6 位）" autocomplete="new-password">
+      <input id="signup-pass2" type="password" placeholder="再次输入密码" autocomplete="new-password">
+      <div id="signup-error" class="auth-error"></div>
+      <button id="btn-signup" class="btn primary block">注册</button>
+    </div>
   </div>
 </div>
 
