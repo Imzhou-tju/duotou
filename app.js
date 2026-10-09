@@ -1752,6 +1752,11 @@ function updateScopeIndicator() {
   if (!el) return;
   const multi = draftMode === 'single' && draftUnits[0] && draftUnits[0].positions.length > 1;
   el.classList.toggle('hidden', !multi);
+  // 提示文案跟随岗位数：多岗位才讲「圆圈选中」，单岗位直接说阶段应用到它，避免单岗位时出现无从下手的指引
+  const hint = $('#stage-hint');
+  if (hint) hint.textContent = multi
+    ? '点选阶段即记为今天；多个岗位想填不同阶段，先点岗位左侧的圆圈选中，再选阶段'
+    : '点选阶段即记为今天，直接应用到当前岗位';
   if (!multi) { stageScope = null; return; }
   if (!stageScope) { el.textContent = '全部岗位'; el.classList.remove('partial'); }
   else {
