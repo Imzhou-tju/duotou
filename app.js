@@ -1700,6 +1700,18 @@ function stageScopeTargets() {
   if (!stageScope) return list;
   return list.filter(p => stageScope.has(p.key));
 }
+// 点阶段 chip = 「当前阶段切到这个阶段」：清掉流程上位于它之后的已记日期。
+// 否则同一天先点 Offer 再点三面时，两个日期都是今天，stageFromDates 按「同日取流程靠后」
+// 永远推导回 Offer，徽章和落库都切不回去。清掉之后的阶段日期，推导自然落回点选的阶段
+function pruneLaterStageDates(stage) {
+  const idx = ALL_STAGES.indexOf(stage);
+  if (idx < 0) return false;
+  let changed = false;
+  for (const s of ALL_STAGES.slice(idx + 1)) {
+    if (draftDates[s]) { delete draftDates[s]; changed = true; }
+  }
+  return changed;
+}
 // 应用范围变化后，阶段区（chips + 日期行）回显第一个目标岗位的数据：看到的就是接下来要写到的
 function syncBufferFromScope() {
   const ts = stageScopeTargets();
@@ -3041,8 +3053,11 @@ function bindEvents() {
     // 没选中任何岗位时拦一下：写了也没去处，提示比静默无效更不容易让人误以为已保存
     if (!stageScopeTargets().length) { toast('请先点岗位左侧的圆圈选中岗位'); return; }
     draftStage = t.dataset.stage;
-    // 选中某阶段时，若该阶段尚无日期则自动记为今天（与详情页一致，少一次手动填日期）
-    if (!draftDates[draftStage]) { draftDates[draftStage] = todayStr(); renderDateRows(); }
+    // 选中某阶段时，若该阶段尚无日期则自动记为今天（与详情页一致，少一次手动填日期）；
+    // 同时清掉流程上更靠后的阶段日期，保证「点谁切到谁」（如点过 Offer 后点三面要能切回去）
+    const hadDate = !!draftDates[draftStage];
+    if (!hadDate) draftDates[draftStage] = todayStr();
+    if (pruneLaterStageDates(draftStage) || !hadDate) renderDateRows();
     applyBufferToTargets();   // 写到选中的岗位（没选=全部），并刷新岗位行上的阶段徽章
     renderEditStagesOnly();
   });
