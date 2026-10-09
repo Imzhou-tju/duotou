@@ -2548,22 +2548,55 @@ async function normalizeAllBases() {
 }
 
 // ---------- 事件绑定 ----------
+// 登录/注册报错翻成人话；认识不了的原文透出
+function authErrorZh(msg) {
+  const m = String(msg || '');
+  const table = [
+    ['Anonymous sign-ins are disabled', '请先填写邮箱和密码，再点「登录」或「注册新账号」'],
+    ['Invalid login credentials', '邮箱或密码不对'],
+    ['Email not confirmed', '邮箱还没确认：请先查收确认邮件，点邮件里的链接激活后再登录'],
+    ['User already registered', '该邮箱已注册过，直接点「登录」即可'],
+    ['Signups not allowed', '当前已关闭新用户注册'],
+    ['Password should be at least', '密码至少 6 位'],
+    ['Unable to validate email address', '邮箱格式不对，检查一下有没有写错'],
+    ['Email address', '邮箱格式不对，检查一下有没有写错'],
+    ['Failed to fetch', '网络异常，请稍后再试'],
+  ];
+  for (const [k, v] of table) if (m.includes(k)) return v;
+  return m;
+}
+const AUTH_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// 登录/注册前的本地校验：不合法直接提示并聚焦，不发请求。
+// 否则空邮箱+空密码会被 Supabase 当成匿名注册，报出看不懂的 "Anonymous sign-ins are disabled"
+function authValidate(mode) {
+  const email = $('#auth-email').value.trim();
+  const pass = $('#auth-pass').value;
+  if (!email)               return { err: '请先填写邮箱', focus: '#auth-email' };
+  if (!AUTH_EMAIL_RE.test(email)) return { err: '邮箱格式不对，检查一下有没有写错', focus: '#auth-email' };
+  if (!pass)                return { err: '请先填写密码', focus: '#auth-pass' };
+  if (mode === 'signup' && pass.length < 6) return { err: '注册密码至少 6 位', focus: '#auth-pass' };
+  return { email, pass };
+}
 function bindEvents() {
   // 登录 / 注册
   $('#btn-signin').addEventListener('click', async () => {
     $('#auth-error').textContent = '';
-    const { error } = await sb.auth.signInWithPassword({ email: $('#auth-email').value.trim(), password: $('#auth-pass').value });
-    if (error) { $('#auth-error').textContent = error.message; return; }
+    const v = authValidate('signin');
+    if (v.err) { $('#auth-error').textContent = v.err; $(v.focus).focus(); return; }
+    const { error } = await sb.auth.signInWithPassword({ email: v.email, password: v.pass });
+    if (error) { $('#auth-error').textContent = authErrorZh(error.message); return; }
     const { data } = await sb.auth.getSession();
     user = data.session.user;
     await enterApp();
   });
   $('#btn-signup').addEventListener('click', async () => {
     $('#auth-error').textContent = '';
-    const { data, error } = await sb.auth.signUp({ email: $('#auth-email').value.trim(), password: $('#auth-pass').value });
-    if (error) { $('#auth-error').textContent = error.message; return; }
+    const v = authValidate('signup');
+    if (v.err) { $('#auth-error').textContent = v.err; $(v.focus).focus(); return; }
+    const { data, error } = await sb.auth.signUp({ email: v.email, password: v.pass });
+    if (error) { $('#auth-error').textContent = authErrorZh(error.message); return; }
     if (data.session) { user = data.session.user; await enterApp(); }
-    else $('#auth-error').textContent = '注册成功，请到 Supabase 关闭邮箱确认后直接登录';
+    else $('#auth-error').textContent = '注册成功！请先查收确认邮件，点邮件里的链接激活账号后再登录';
   });
 
   // 底部标签栏
