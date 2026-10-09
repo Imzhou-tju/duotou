@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261009-3" data-app>
-<link rel="stylesheet" href="style.css?v=20261009-3">
+<link rel="preload" as="script" href="app.js?v=20261009-4" data-app>
+<link rel="stylesheet" href="style.css?v=20261009-4">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -240,19 +240,15 @@
           </div>
         </div>
         <div class="form-row" id="row-link"><span class="f-label">投递链接</span><input id="f-link" placeholder="选填"></div>
-        <!-- 当前阶段：点阶段 chip 写入「应用范围」里的岗位（默认全部；可勾选部分岗位分开填写）。
+        <!-- 当前阶段：点岗位卡左侧的小圆圈选中岗位后，点阶段 chip 只更新到选中的岗位（不选=全部）。
              集团模式提示在各条详情里推进 -->
         <div class="form-row col" id="row-stage">
           <div class="sec-head">
             <span class="f-label">当前阶段</span>
-            <button type="button" id="stage-scope-btn" class="pos-toggle hidden" aria-expanded="false" aria-controls="stage-scope-box">范围：全部岗位</button>
-          </div>
-          <div id="stage-scope-box" class="scope-box hidden">
-            <div class="scope-head"><span>勾选阶段要应用到的岗位</span><button type="button" id="scope-all-btn" class="scope-all-btn">全选</button></div>
-            <div id="scope-list"></div>
+            <button type="button" id="scope-indicator" class="scope-indicator hidden" title="点此恢复应用到全部岗位">全部岗位</button>
           </div>
           <div id="edit-stages" class="chips"></div>
-          <div class="p-hint">点选阶段即记为今天，应用到上面勾选的岗位；多个岗位想填不同阶段，点「范围」勾选后再选</div>
+          <div class="p-hint">点选阶段即记为今天；多个岗位想填不同阶段，先点岗位左侧的圆圈选中，再选阶段</div>
         </div>
         <div class="form-row col hidden" id="row-stage-group"><span class="f-label">当前阶段</span><div class="p-hint">集团投递下各岗位的进度彼此独立，保存后在各条记录的详情里按日期推进</div></div>
         <!-- 各阶段日期：默认折叠，标题显示已填项数 -->

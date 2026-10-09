@@ -1108,6 +1108,7 @@ function renderEdit() {
   const singleTagged = !!(rec && initGroup && rec.company && rec.company !== rec.group_name);
   draftMode = (initGroup && !singleTagged) ? 'group' : 'single';
   setModeUI(draftMode);
+  stageScope = null;   // 每次进入编辑页都从「应用到全部岗位」开始，上次的选择（岗位 key 已换新）不残留
   // 集团模式：编辑时这条记录成为一张单位卡（一个岗位）；老数据 company 可能是全称（如 中信银行北京市分行），回填到具体单位
   if (draftMode === 'group') {
     draftUnits = rec
@@ -1218,12 +1219,13 @@ function renderUnits() {
 // 岗位行列表：集团模式下渲染在单位卡内，单个单位模式下渲染在外层岗位区
 function renderPositions(unit, container) {
   if (!unit || !container) return;
-  // 阶段徽章只在单模式多岗位时出现：单岗位的阶段区就在下方，集团模式的阶段在详情里推进，都不重复占行
+  // 阶段徽章与选中圈只在单模式多岗位时出现：单岗位的阶段区就在下方，集团模式的阶段在详情里推进，都不重复占行
   const showStage = draftMode === 'single' && unit.positions.length > 1;
+  if (draftMode === 'single') container.classList.toggle('has-sel', showStage);
   container.innerHTML = unit.positions.map((p, i) => `
     <div class="p-item">
       <div class="p-top">
-        <span class="pi-idx">${i + 1}</span>
+        ${selCircleHTML(p, i, showStage)}
         <input class="pi-name" data-uk="${unit.key}" data-pk="${p.key}" maxlength="40"
                placeholder="如 AI 应用开发岗" aria-label="岗位名称 ${i + 1}" value="${esc(p.name || '')}">
         <input class="pi-base" data-uk="${unit.key}" data-pk="${p.key}" data-pb="1" list="base-list" maxlength="30"
@@ -1250,7 +1252,7 @@ function renderPositions(unit, container) {
     if (nEl) nEl.textContent = `（${unit.positions.length}）`;
   }
   updateUnitCount();
-  updateScopeUI();   // 岗位增删后刷新「应用范围」入口（显隐 / 文案 / 列表）
+  updateScopeIndicator();   // 岗位增删后刷新范围指示（显隐 / 文案）
   container.querySelectorAll('.pi-remark').forEach(autoGrowRemark);   // 已有长描述按内容对齐高度
   hydrateImages(container);   // 附件走签名 URL：渲染完统一回填 src
 }
@@ -1536,39 +1538,57 @@ function refreshPosStageBadges() {
     el.textContent = s;
     el.style.background = COLORS[s] || '#9AA0A6';
   });
-  const box = $('#stage-scope-box');
-  if (box && !box.classList.contains('hidden')) renderScopeList();
 }
-function updateScopeBtn() {
-  const btn = $('#stage-scope-btn'); const u = draftUnits[0];
-  if (!btn || !u || draftMode !== 'single') return;
-  btn.textContent = stageScope ? `范围：已选 ${stageScopeTargets().length} 个岗位` : '范围：全部岗位';
+// 岗位卡左侧的选中圈：多岗位时替代序号圆，是阶段应用范围的选择入口。
+// all=未进入选择（数字圆，= 全部岗位）；on=选中；off=未选中（虚线空心圈）
+function selCircleHTML(p, i, showSel) {
+  if (!showSel) return `<span class="pi-idx">${i + 1}</span>`;
+  const on = !!stageScope && stageScope.has(p.key);
+  const off = !!stageScope && !on;
+  const cls = off ? 'off' : (on ? 'on' : 'all');
+  const content = on ? '✓' : (i + 1);
+  return `<button type="button" class="pi-idx pi-sel ${cls}" data-psel="${p.key}" aria-pressed="${on}" aria-label="选中岗位 ${i + 1}，阶段将更新到选中的岗位">${content}</button>`;
 }
-function renderScopeList() {
-  const box = $('#scope-list'); const u = draftUnits[0];
-  if (!box) return;
-  if (!u || draftMode !== 'single') { box.innerHTML = ''; return; }
-  box.innerHTML = u.positions.map((p, i) => {
-    const checked = !stageScope || stageScope.has(p.key);
-    const s = posStageOf(p);
-    const nm = (p.name || '').trim() || ('岗位 ' + (i + 1));
-    return `<label class="scope-row"><input type="checkbox" data-scope-pk="${p.key}"${checked ? ' checked' : ''}><span class="scope-name">${esc(nm)}</span><span class="pi-stage" style="background:${COLORS[s] || '#9AA0A6'}">${esc(s)}</span></label>`;
-  }).join('');
+// 点圈切换选中状态，只原地改圈的样式，不重渲染岗位列表（保输入焦点）。
+// 语义：没选过（null）→ 点圈进入选择且只选这一个；已选中的再点 = 取消；
+// 取消到空集 / 勾满全部 = 回到「应用到全部岗位」
+function toggleScopePosition(pk) {
+  const u = draftUnits[0]; if (!u) return;
+  if (!stageScope) stageScope = new Set([pk]);
+  else if (stageScope.has(pk)) { stageScope = new Set(stageScope); stageScope.delete(pk); }
+  else { stageScope = new Set(stageScope); stageScope.add(pk); }
+  if (stageScope.size >= u.positions.length) stageScope = null;      // 全选 = 全部岗位
+  if (stageScope && !stageScope.size) { stageScope = null; toast('已恢复应用到全部岗位'); }
+  syncBufferFromScope();
+  refreshScopeCircles();
+  updateScopeIndicator();
 }
-// 范围入口只在「单个单位 + 多岗位」出现；其余场景（单岗位 / 集团模式）收起并复位为全部
-function updateScopeUI() {
-  const btn = $('#stage-scope-btn'), box = $('#stage-scope-box');
-  if (!btn || !box) return;
+function refreshScopeCircles() {
+  const cont = $('#single-positions'); const u = draftUnits[0];
+  if (!cont || !u || !cont.classList.contains('has-sel')) return;
+  const circles = cont.querySelectorAll('.pi-sel');
+  u.positions.forEach((p, i) => {
+    const el = circles[i]; if (!el) return;
+    const on = !!stageScope && stageScope.has(p.key);
+    const off = !!stageScope && !on;
+    el.className = 'pi-idx pi-sel ' + (off ? 'off' : (on ? 'on' : 'all'));
+    el.textContent = on ? '✓' : (i + 1);
+    el.setAttribute('aria-pressed', String(on));
+  });
+}
+// 范围指示：只读反馈阶段当前写到哪些岗位；点击恢复全部。单岗位 / 集团模式隐藏并复位
+function updateScopeIndicator() {
+  const el = $('#scope-indicator');
+  if (!el) return;
   const multi = draftMode === 'single' && draftUnits[0] && draftUnits[0].positions.length > 1;
-  btn.classList.toggle('hidden', !multi);
-  if (!multi) {
-    stageScope = null;
-    box.classList.add('hidden');
-    btn.setAttribute('aria-expanded', 'false');
-    return;
+  el.classList.toggle('hidden', !multi);
+  if (!multi) { stageScope = null; return; }
+  if (!stageScope) { el.textContent = '全部岗位'; el.classList.remove('partial'); }
+  else {
+    const n = stageScopeTargets().length;
+    el.textContent = n ? `已选 ${n} 个岗位` : '未选岗位';
+    el.classList.add('partial');
   }
-  updateScopeBtn();
-  if (!box.classList.contains('hidden')) renderScopeList();
 }
 function collectForm() {
   // Base 地 / 岗位描述 / 阶段都按岗位走：collectForm 只管整单共用的字段（单位 / 集团 / 链接）。
@@ -2808,38 +2828,22 @@ function bindEvents() {
   // 编辑页
   $('#edit-stages').addEventListener('click', (e) => {
     const t = e.target.closest('[data-stage]'); if (!t) return;
-    // 没勾选任何岗位时拦一下：写了也没去处，提示比静默无效更不容易让人误以为已保存
-    if (!stageScopeTargets().length) { toast('请先在「范围」里勾选要应用的岗位'); return; }
+    // 没选中任何岗位时拦一下：写了也没去处，提示比静默无效更不容易让人误以为已保存
+    if (!stageScopeTargets().length) { toast('请先点岗位左侧的圆圈选中岗位'); return; }
     draftStage = t.dataset.stage;
     // 选中某阶段时，若该阶段尚无日期则自动记为今天（与详情页一致，少一次手动填日期）
     if (!draftDates[draftStage]) { draftDates[draftStage] = todayStr(); renderDateRows(); }
-    applyBufferToTargets();   // 写到应用范围里的岗位（全部或勾选的），并刷新岗位行上的阶段徽章
+    applyBufferToTargets();   // 写到选中的岗位（没选=全部），并刷新岗位行上的阶段徽章
     renderEditStagesOnly();
   });
-  // 应用范围：展开 / 收起岗位勾选列表；勾选变化即改写目标集合，chips 与日期行回显第一个目标岗位的数据
-  $('#stage-scope-btn').addEventListener('click', () => {
-    const box = $('#stage-scope-box');
-    const open = box.classList.contains('hidden');
-    box.classList.toggle('hidden', !open);
-    $('#stage-scope-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) renderScopeList();
-  });
-  $('#stage-scope-box').addEventListener('change', (e) => {
-    const t = e.target;
-    if (!t.dataset || !t.dataset.scopePk) return;
-    const u = draftUnits[0]; if (!u) return;
-    const set = new Set(stageScope || u.positions.map(p => p.key));
-    if (t.checked) set.add(t.dataset.scopePk); else set.delete(t.dataset.scopePk);
-    // 全勾 = 回到「全部岗位」：之后新增的岗位也自动纳入
-    stageScope = set.size === u.positions.length ? null : set;
-    syncBufferFromScope();
-    updateScopeBtn();
-  });
-  $('#scope-all-btn').addEventListener('click', () => {
+  // 范围指示可点击：恢复「应用到全部岗位」
+  $('#scope-indicator').addEventListener('click', () => {
+    if (!stageScope) return;
     stageScope = null;
+    toast('已恢复应用到全部岗位');
     syncBufferFromScope();
-    updateScopeBtn();
-    renderScopeList();
+    refreshScopeCircles();
+    updateScopeIndicator();
   });
   $('#edit-dates').addEventListener('change', (e) => {
     const dp = e.target.closest('[data-dp]');
@@ -2966,6 +2970,8 @@ function bindEvents() {
     }, true);   // 捕获阶段：blur 不冒泡，用 capture 才能在离开输入框时拿到
   }
   $('#single-positions').addEventListener('click', (e) => {
+    const sel = e.target.closest('[data-psel]');
+    if (sel) { toggleScopePosition(sel.dataset.psel); return; }   // 岗位选中圈：切换该岗位是否在阶段应用范围里
     const delP = e.target.closest('[data-pdel]');
     if (delP) { removePosition(delP.dataset.uk, delP.dataset.pdel); return; }
     handleImgClick(e);

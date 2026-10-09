@@ -382,17 +382,21 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
 }
 .batch-box textarea { padding: 9px 11px; font-size: 14px; background: var(--field); }
 .batch-foot { font-size: 12px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
-/* 阶段「应用范围」选择器：勾选哪些岗位，阶段 chip / 各阶段日期就写到哪些岗位（默认全部） */
-.scope-box {
-  margin-bottom: 10px; padding: 8px 12px; border-radius: 12px;
-  border: 1px dashed var(--line-dash); background: var(--surface-2);
+/* 岗位选中圈：多岗位时替换序号圆，选中后阶段只更新到选中的岗位。
+   all=未进入选择（灰色数字圆，= 全部）；on=选中（品牌实心+勾）；off=未选中（虚线空心圈） */
+.pi-sel { border: none; padding: 0; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font: inherit; }
+.pi-sel.all { background: var(--brand-soft); color: var(--brand); }
+.pi-sel.on { background: var(--brand); color: var(--on-brand); font-weight: 700; }
+.pi-sel.off { background: transparent; color: var(--text3); border: 1.5px dashed var(--line-dash); }
+.pi-sel:active { opacity: .8; }
+/* 阶段范围指示：只读反馈当前写到哪些岗位，点击恢复全部 */
+.scope-indicator {
+  height: 26px; padding: 0 12px; display: inline-flex; align-items: center;
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+  color: var(--brand); background: var(--brand-soft);
+  border: none; border-radius: 13px; cursor: pointer;
 }
-.scope-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text2); padding: 2px 0 6px; }
-.scope-all-btn { font-size: 12px; line-height: 1; padding: 0; cursor: pointer; color: var(--brand); background: none; border: none; }
-.scope-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; font-size: 13px; color: var(--text); cursor: pointer; }
-.scope-row + .scope-row { border-top: 1px solid var(--border); }
-.scope-row input { accent-color: var(--brand); width: 16px; height: 16px; flex-shrink: 0; }
-.scope-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-indicator.partial { color: var(--text2); background: var(--bg); }
 /* 智能识别：灰度入口，刻意做成弱化的文字链，不抢「批量粘贴」胶囊的视觉重心 */
 .pos-link {
   font-size: 12px; line-height: 1; padding: 0; cursor: pointer;
@@ -826,6 +830,9 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
   /* 序号圆藏掉，输入区左边界同步收回，否则描述行 / 图片条会整块右移 30px */
   .pi-idx { display: none; }
   .p-item { --pind: 0; }
+  /* 多岗位时选中圈是阶段选择入口，不能藏：保留圆并同步恢复输入区左边界 */
+  .p-list.has-sel .pi-idx { display: flex; }
+  .p-list.has-sel .p-item { --pind: 30px; }
 }
 
 /* ---------- 桌面端：内容居中，标签栏/FAB 收在容器内；编辑页收窄 + 表单两列 ---------- */
