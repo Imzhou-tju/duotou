@@ -44,7 +44,8 @@ let draftMode = 'single';   // 'single' 单个单位 | 'group' 集团投递
 // 这三个要排在 draftUnits 前面：draftUnits 初始化时 newUnit() → newPosition() 会读它们
 let draftStage = '投递';
 let draftDates = {};
-// 阶段应用范围：null = 全部岗位（新增岗位自动纳入）；Set<岗位key> = 只应用到勾选的岗位。
+// 阶段应用范围：null = 尚未点过圈（全部岗位，新增岗位自动纳入）；Set<岗位key> = 显式勾选的岗位
+//（独立开关：勾满全部也保留为 Set、空集也保留为 Set，不折叠回 null，否则点圈语义会跳变）。
 // 只在单个单位模式下且岗位数 > 1 时可改，其余场景恒为 null
 let stageScope = null;
 let draftUnits = [newUnit()];   // 表单里的单位列表：每个单位下挂多个岗位；单个单位模式只用第一个单位来装岗位
@@ -1556,6 +1557,8 @@ function removePosition(unitKey, posKey) {
   const p = u.positions[idx];
   if (p.recId && !confirm('这个岗位已经保存过，删除会同时移除对应的投递记录，确定？')) return;
   u.positions.splice(idx, 1);
+  // 选中集合里同步摘掉被删的岗位，避免残留 key 让「全选」判断失真
+  if (stageScope && stageScope.has(posKey)) { stageScope = new Set(stageScope); stageScope.delete(posKey); updateScopeIndicator(); }
   rerenderPositions(u);
   const rows = positionsContainer(u).querySelectorAll('.pi-name');
   if (rows.length) rows[Math.max(0, idx - 1)].focus();
@@ -1720,15 +1723,16 @@ function selCircleHTML(p, i, showSel) {
   return `<button type="button" class="pi-idx pi-sel ${cls}" data-psel="${p.key}" aria-pressed="${on}" aria-label="选中岗位 ${i + 1}，阶段将更新到选中的岗位">${content}</button>`;
 }
 // 点圈切换选中状态，只原地改圈的样式，不重渲染岗位列表（保输入焦点）。
-// 语义：没选过（null）→ 点圈进入选择且只选这一个；已选中的再点 = 取消；
-// 取消到空集 / 勾满全部 = 回到「应用到全部岗位」
+// 语义：圈是独立开关——没选过（null）→ 点圈从「全部」进入显式选择，先选这一个；
+// 之后每点一次就是勾上 / 取消这一个；空集和全选都保留为显式集合，不折叠回 null
+//（否则「点1→点2→再点2」会因全选折叠导致再次点圈时语义跳变）
 function toggleScopePosition(pk) {
   const u = draftUnits[0]; if (!u) return;
   if (!stageScope) stageScope = new Set([pk]);
-  else if (stageScope.has(pk)) { stageScope = new Set(stageScope); stageScope.delete(pk); }
-  else { stageScope = new Set(stageScope); stageScope.add(pk); }
-  if (stageScope.size >= u.positions.length) stageScope = null;      // 全选 = 全部岗位
-  if (stageScope && !stageScope.size) { stageScope = null; toast('已恢复应用到全部岗位'); }
+  else {
+    stageScope = new Set(stageScope);
+    if (stageScope.has(pk)) stageScope.delete(pk); else stageScope.add(pk);
+  }
   syncBufferFromScope();
   refreshScopeCircles();
   updateScopeIndicator();
@@ -1758,12 +1762,12 @@ function updateScopeIndicator() {
     ? '点选阶段即记为今天；多个岗位想填不同阶段，先点岗位左侧的圆圈选中，再选阶段'
     : '点选阶段即记为今天，直接应用到当前岗位';
   if (!multi) { stageScope = null; return; }
-  if (!stageScope) { el.textContent = '全部岗位'; el.classList.remove('partial'); }
-  else {
-    const n = stageScopeTargets().length;
-    el.textContent = n ? `已选 ${n} 个岗位` : '未选岗位';
-    el.classList.add('partial');
-  }
+  // 指示文案：显式全选 / 未进入选择（null）都算「全部岗位」；空集 = 未选；其余 = 已选 N 个
+  const allN = draftUnits[0].positions.length;
+  const n = stageScopeTargets().length;
+  if (!stageScope || n === allN) { el.textContent = '全部岗位'; el.classList.remove('partial'); }
+  else if (!n) { el.textContent = '未选岗位'; el.classList.add('partial'); }
+  else { el.textContent = `已选 ${n} 个岗位`; el.classList.add('partial'); }
 }
 function collectForm() {
   // Base 地 / 岗位描述 / 阶段都按岗位走：collectForm 只管整单共用的字段（单位 / 集团 / 链接）。
