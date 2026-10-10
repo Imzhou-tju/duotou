@@ -1043,7 +1043,7 @@ function renderDraftBanner() {
   }
 }
 // ---------- 面试日程 ----------
-// 一条日程 = 「某条记录 × 某个阶段」，只收「填了日期 + 填了具体时间」的项。
+// 一条日程 = 「某条记录 × 某个阶段」，只要那一天在未来就收进来——具体时间可填可不填。
 // 提醒窗口是今天起 7 天：今天之前（已经面过的）不提醒，第 8 天以后也先不占地方。
 const SCHEDULE_DAYS = 7;
 let schCollapsed = false;    // 日程块收起 / 展开：状态记在内存里，重渲染后保持
@@ -1054,15 +1054,20 @@ function scheduleItems() {
   for (const r of records) {
     const dates = r.stage_dates || {};
     const times = timesOf(r);
-    for (const [stage, t] of Object.entries(times)) {
-      const d = dates[stage];
+    for (const [stage, d] of Object.entries(dates)) {
       if (!d || d < today || d > end) continue;   // 只提醒今天起 7 天内
-      out.push({ id: r.id, stage, date: d, time: t, at: d + ' ' + t, rec: r });
+      out.push({ id: r.id, stage, date: d, time: times[stage] || '', rec: r });
     }
   }
-  // 同一天里按时间先后排；时间相同时按「阶段靠前」排，保证顺序稳定
-  out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1
-    : (ALL_STAGES.indexOf(a.stage) - ALL_STAGES.indexOf(b.stage))));
+  // 同一天里：还没填时间的排前面（待定），填了的按时间先后排。
+  // 同组内的时间都相同时，按「阶段靠前」排，保证顺序稳定。
+  const rank = (it) => ALL_STAGES.indexOf(it.stage);
+  out.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    if (!a.time !== !b.time) return a.time ? 1 : -1;    // 没时间的在前
+    if (a.time !== b.time) return a.time < b.time ? -1 : 1;
+    return rank(a) - rank(b);
+  });
   return out;
 }
 // 「今天 / 明天 / 后天」这类相对说法比「10月13日」好读得多，7 天内都写成相对日期
@@ -1074,13 +1079,16 @@ function dayLabel(dateStr) {
   const m = dateStr.match(/^\d{4}-(\d{2})-(\d{2})$/);
   return m ? `${+m[1]}月${+m[2]}日` : dateStr;
 }
-// 日程条目：左侧时间，右侧单位 / 岗位 / 阶段；点一下直接进那条记录的详情
+// 日程条目：左侧时间（没填就写「全天」），右侧单位 / 岗位 / 阶段；点一下直接进那条记录的详情
 function scheduleRowHTML(it) {
   const r = it.rec;
   const unit = unitLabel([r]) || r.company || '未命名单位';
   const color = COLORS[it.stage] || '#9AA0A6';
+  const timeHTML = it.time
+    ? `<div class="sch-time">${esc(it.time)}</div>`
+    : '<div class="sch-time is-tbd">全天</div>';
   return `<div class="sch-row" data-sch="${it.id}" role="button" tabindex="0">
-    <div class="sch-time">${esc(it.time)}</div>
+    ${timeHTML}
     <div class="sch-main">
       <div class="sch-line1">${esc(unit)}${r.position ? ' · ' + esc(r.position) : ''}</div>
       <div class="sch-line2">${esc(it.date)} ${esc(dayLabel(it.date))}</div>
@@ -1088,25 +1096,31 @@ function scheduleRowHTML(it) {
     <span class="sch-stage" style="background:${color}">${esc(it.stage)}</span>
   </div>`;
 }
-// 首页日程块：按日期分组，同一天内按时间排；没有安排就整块不显示（不占空间）
+// 首页日程块：按日期分组，同一天内「待定时间在前、已定时间按点排」；没有安排就整块不显示（不占空间）
 function renderSchedule() {
   const box = $('#schedule');
   if (!box) return;
-  const list = scheduleItems();
-  if (!list.length) { box.classList.add('hidden'); $('#schedule-list').innerHTML = ''; return; }
+  const items = scheduleItems();
+  if (!items.length) {
+    box.classList.add('hidden');
+    $('#schedule-list').innerHTML = '';
+    return;
+  }
   const byDay = new Map();
-  for (const it of list) {
+  for (const it of items) {
     if (!byDay.has(it.date)) byDay.set(it.date, []);
     byDay.get(it.date).push(it);
   }
   const today = todayStr();
-  const html = [...byDay.entries()].map(([d, items]) => `
+  const html = [...byDay.entries()].map(([d, list]) => `
     <div class="sch-day${d === today ? ' is-today' : ''}">
-      <div class="sch-day-head"><span class="sch-day-lbl">${esc(dayLabel(d))}</span><span class="sch-day-date">${esc(d)}</span><span class="sch-day-n">${items.length} 场</span></div>
-      ${items.map(scheduleRowHTML).join('')}
+      <div class="sch-day-head"><span class="sch-day-lbl">${esc(dayLabel(d))}</span><span class="sch-day-date">${esc(d)}</span><span class="sch-day-n">${list.length} 场</span></div>
+      ${list.map(scheduleRowHTML).join('')}
     </div>`).join('');
   $('#schedule-list').innerHTML = html;
-  $('#sch-meta').textContent = `未来 ${SCHEDULE_DAYS} 天 · ${list.length} 场`;
+  const tbd = items.filter(it => !it.time).length;
+  $('#sch-meta').textContent = `未来 ${SCHEDULE_DAYS} 天 · ${items.length} 场`
+    + (tbd ? `（${tbd} 场时间待定）` : '');
   box.classList.remove('hidden');
   // 收起状态在重渲染后要保住（否则每次改完数据又自己展开）
   const collapsed = schCollapsed;

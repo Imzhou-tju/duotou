@@ -207,6 +207,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 16px 16px calc(var(--tab
   flex-shrink: 0; width: 52px; font-size: 15px; font-weight: 700;
   color: var(--brand); font-variant-numeric: tabular-nums;
 }
+/* 还没定具体时间的：写「全天」，弱化处理，跟已定时间的区分开 */
+.sch-time.is-tbd { font-size: 12px; font-weight: 600; color: var(--text3); }
 .sch-main { flex: 1; min-width: 0; }
 .sch-line1 { font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sch-line2 { font-size: 12px; color: var(--text3); margin-top: 2px; }
