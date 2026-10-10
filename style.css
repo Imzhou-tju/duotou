@@ -215,13 +215,17 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 16px 16px calc(var(--tab
 .sch-stage { flex-shrink: 0; color: #fff; font-size: 11px; padding: 3px 9px; border-radius: 10px; }
 
 /* ---------- 阶段时间控件（编辑页 / 详情弹层共用） ---------- */
-.time-select {
-  flex-shrink: 0; width: 88px; height: 38px; font-size: 14px; padding: 0 6px;
+/* 用 input[type=time] 而不是下拉：能直接在数字上改，也支持任意分钟（13:15） */
+.time-input {
+  flex-shrink: 0; width: 96px; height: 38px; font-size: 14px; padding: 0 8px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--field);
   color: var(--text); outline: none; font-variant-numeric: tabular-nums;
+  -webkit-appearance: none; appearance: none;
 }
-.time-select:focus { border-color: var(--brand); }
-.sheet-date-row .time-select { height: 42px; border-radius: 10px; }
+.time-input:focus { border-color: var(--brand); }
+.time-input::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .55; }
+.time-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+.sheet-date-row .time-input { height: 42px; border-radius: 10px; }
 /* 还没填日期的行：时间控件不可用，用一个置灰按钮占位（点了给提示，不静默无反应） */
 .time-locked {
   flex-shrink: 0; width: 88px; height: 38px; font-size: 13px; user-select: none;
@@ -908,12 +912,12 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
   /* 窄屏日期行放下「日期 + 时间 + 三个按钮」太挤：日期单独一行，时间与按钮换到第二行 */
   .date-row { flex-wrap: wrap; row-gap: 8px; }
   .date-row .date-picker { flex: 1 1 100%; order: 1; }
-  .date-row .time-select, .date-row .time-locked { order: 2; }
+  .date-row .time-input, .date-row .time-locked { order: 2; }
   .date-row .date-acts { order: 3; margin-left: auto; }
   .sheet-date-row { flex-wrap: wrap; row-gap: 8px; }
   .sheet-date-row .sd-name { width: 100%; }
   .sheet-date-row .sheet-date-input { flex: 1 1 100%; order: 1; }
-  .sheet-date-row .time-select, .sheet-date-row .time-locked { order: 2; }
+  .sheet-date-row .time-input, .sheet-date-row .time-locked { order: 2; }
   .sheet-date-row .date-act { order: 3; margin-left: auto; }
 }
 

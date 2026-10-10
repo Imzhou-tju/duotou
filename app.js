@@ -510,9 +510,7 @@ function parseDate(text) {
 }
 
 // ---------- 阶段具体时间（面试 / 笔试几点开始） ----------
-// 存库格式统一是 "HH:MM"（24 小时制、两位数），排序和「是不是今天已过」都依赖这个形态，
-// 所以输入层允许手写「下午3点 / 15:00 / 3:30」这类写法，进来先归一化再落库。
-const TIME_MINUTES = '00,30';        // 下拉刻度：整点与半点，够用又不至于列表太长
+// 存库格式统一是 "HH:MM"（24 小时制、两位数），排序和「是不是今天已过」都依赖这个形态。
 function pad2(n) { return String(n).padStart(2, '0'); }
 // "14:30" / "14:30:00" → "14:30"；不合法返回 null
 function cleanTime(v) {
@@ -522,48 +520,11 @@ function cleanTime(v) {
   if (h > 23 || mi > 59) return null;
   return pad2(h) + ':' + pad2(mi);
 }
-// 自然语言时间解析：认不出一律返回 null（由调用方提示重填，不猜）
-function parseTime(text) {
-  if (!text) return null;
-  const t = String(text).trim();
-  if (!t) return null;
-  const direct = cleanTime(t);
-  if (direct) return direct;
-  // 「下午3点」「晚上8点半」「上午9:00」「14:30」
-  let m = t.match(/^(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(\d{1,2})\s*[点:时]\s*(半|\d{1,2})?\s*分?$/)
-       || t.match(/^(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(\d{1,2})[:：](\d{1,2})$/);
-  if (!m) return null;
-  const seg = m[1] || '';
-  let h = +m[2];
-  const tail = String(m[3] || '').trim();
-  const mi = tail === '半' ? 30 : (tail ? +tail : 0);
-  if (seg) {
-    // 带时段词：按 12 小时制换算，写超过 12 的数字说明写错了
-    if (h < 1 || h > 12) return null;
-    if (seg === '下午' || seg === '傍晚' || seg === '晚上') { if (h < 12) h += 12; }
-    else if (seg === '中午') { if (h < 12) h += 12; }
-    else if (h === 12) h = 0;          // 凌晨 / 早上 / 上午 的 12 点 = 0 点
-  } else if (h <= 7) {
-    // 没写时段词的 1~7 点按下午理解（面试基本都在下午），别把「3点」存成凌晨 3 点
-    h += 12;
-  }
-  if (h > 23 || mi > 59) return null;
-  return pad2(h) + ':' + pad2(mi);
-}
-// 时间下拉：整点与半点，并把这条记录已经在用的自定义时间补进去（编辑旧数据时不丢）
-function timeSelectHTML(attr, value) {
+// 时间输入框：直接在数字上改（原生 input[type=time]），点右侧时钟图标用系统时间选择器。
+// 空值表示「未定」。
+function timeInputHTML(attr, value) {
   const cur = cleanTime(value) || '';
-  const opts = ['<option value="">未定</option>'];
-  const seen = new Set(['']);
-  for (let h = 7; h <= 22; h++) {
-    for (const mm of TIME_MINUTES.split(',')) {
-      const v = pad2(h) + ':' + mm;
-      seen.add(v);
-      opts.push(`<option value="${v}"${cur === v ? ' selected' : ''}>${v}</option>`);
-    }
-  }
-  if (cur && !seen.has(cur)) opts.push(`<option value="${cur}" selected>${cur}</option>`);
-  return `<select class="time-select" ${attr}>${opts.join('')}</select>`;
+  return `<input type="time" class="time-input" ${attr} value="${cur}" title="直接输入时间，或点右侧时钟图标选择">`;
 }
 
 // ---------- 日期框：点进去还空着就直接补今天 ----------
@@ -1848,7 +1809,7 @@ function renderDateRows() {
     <div class="date-row">
       <div class="date-name"><span class="date-dot" style="background:${COLORS[s]}"></span>${s}</div>
       <input type="date" class="date-picker" data-dp="${s}" data-skip="${dateSkip.has('dp:' + s) ? '1' : ''}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
-      ${hasDate ? timeSelectHTML(`data-dt="${s}"`, draftTimes[s])
+      ${hasDate ? timeInputHTML(`data-dt="${s}"`, draftTimes[s])
         : '<button type="button" class="time-locked" data-dt-need="' + s + '" title="先填日期，再填具体时间">时间</button>'}
       <div class="date-acts">
         <button type="button" class="date-act" data-today="${s}">今日</button>
@@ -2807,7 +2768,7 @@ function flushSheetDates() {
   const keys = new Set([...Object.keys(cur), ...Object.keys(next)]);
   let changed = false;
   for (const k of keys) { if ((cur[k] || '') !== (next[k] || '')) { changed = true; break; } }
-  // 时间：读下拉当前值；日期被清空的那一项时间一并清掉，日期还在的按选择写入
+  // 时间：读时间框当前值；日期被清空的那一项时间一并清掉，日期还在的按输入值写入
   const nextTimes = {};
   const curTimes = timesOf(rec);
   document.querySelectorAll('#sheet-body [data-sdt]').forEach((el) => {
@@ -2995,7 +2956,7 @@ function renderSheet(id) {
     return `<div class="sheet-date-row">
       <div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
       <input class="sheet-date-input" data-sds="${s}" placeholder="未记录 · 可填 今天 / 9月28日" value="${v ? esc(v) : ''}">
-      ${v ? timeSelectHTML(`data-sdt="${s}"`, t)
+      ${v ? timeInputHTML(`data-sdt="${s}"`, t)
         : '<button type="button" class="time-locked" data-sdt-need="' + s + '" title="先填日期，再填具体时间">时间</button>'}
       <button class="date-act" data-sdtoday="${s}">今日</button>
     </div>`;
