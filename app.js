@@ -2595,9 +2595,12 @@ function flushSheetDates() {
   if (!rec) return;
   // 先把整张弹层的日期读成一份新对象，再和库里对比；
   // 有差异才写一次，否则关一次弹层会按行数发 N 次更新。
+  // 输入框被清空 → 记空串，表示「这一项要清掉」；认不出的写法跳过，不动库里已有值。
   const next = {};
   document.querySelectorAll('#sheet-body [data-sds]').forEach((el) => {
-    const v = parseDate(String(el.value || '').trim());
+    const raw = String(el.value || '').trim();
+    if (!raw) { next[el.dataset.sds] = ''; return; }
+    const v = parseDate(raw);
     if (v) next[el.dataset.sds] = v;
   });
   const cur = rec.stage_dates || {};
@@ -2807,6 +2810,12 @@ function renderSheet(id) {
     </div>`;
   hydrateImages($('#sheet-body'));   // 附件走签名 URL：渲染完统一回填 src
 }
+// 详情弹层可以从首页或搜索页打开，两个列表里都有这条记录的阶段卡片。
+// 写完之后只重画首页，会让「在搜索页改完再返回搜索页」看到改动前的阶段。
+function refreshListsAfterEdit() {
+  renderFeed();
+  renderSearch();
+}
 async function patchSheetDates(id, dates, msg) {
   const ref = records.find(r => r.id === id); if (!ref) return;
   const next = { ...(ref.stage_dates || {}), ...dates };
@@ -2822,12 +2831,14 @@ async function patchSheetDates(id, dates, msg) {
   if (error) { toast('更新失败：' + error.message, 'error'); return; }
   if (msg) toast(msg, 'success');
   await loadRecords();
-  renderFeed();
+  refreshListsAfterEdit();
   renderSheet(id);
 }
 
 async function patchSheetDate(id, stage, value, opts) {
-  const dates = { ...(value ? { [stage]: value } : {}) };
+  // 传空值 = 明确清掉这一项：合并时把它置空，patchSheetDates 里会把空值删掉。
+  // （不能写成「传空值就什么都不传」——那样库里原值还在，界面重新渲染后日期又冒出来）
+  const dates = { [stage]: value || '' };
   await patchSheetDates(id, dates, (opts && opts.silent) ? '' : (value ? ('已记录 · 当前阶段：' + (stageFromDates({ ...(records.find(r => r.id === id) || {}).stage_dates, ...dates }) || '投递')) : '已清除该日期'));
 }
 
