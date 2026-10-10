@@ -1007,6 +1007,8 @@ function renderDraftBanner() {
 // 一条日程 = 「某条记录 × 某个阶段」，只要那一天在未来就收进来——具体时间可填可不填。
 // 提醒窗口是今天起 7 天：今天之前（已经面过的）不提醒，第 8 天以后也先不占地方。
 const SCHEDULE_DAYS = 7;
+// 「投递」不算需要赴约的安排，不进日程（测评 / 笔试 / 面试 / Offer 才进）
+const SCHEDULE_SKIP_STAGES = new Set(['投递']);
 let schCollapsed = false;    // 日程块收起 / 展开：状态记在内存里，重渲染后保持
 function scheduleItems() {
   const today = todayStr();
@@ -1016,7 +1018,8 @@ function scheduleItems() {
     const dates = r.stage_dates || {};
     const times = timesOf(r);
     for (const [stage, d] of Object.entries(dates)) {
-      if (!d || d < today || d > end) continue;   // 只提醒今天起 7 天内
+      if (SCHEDULE_SKIP_STAGES.has(stage)) continue;   // 投递不进日程
+      if (!d || d < today || d > end) continue;        // 只提醒今天起 7 天内
       out.push({ id: r.id, stage, date: d, time: times[stage] || '', rec: r });
     }
   }
