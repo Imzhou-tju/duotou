@@ -176,6 +176,58 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 16px 16px calc(var(--tab
 .db-btn:active { opacity: .85; }
 #btn-discard-draft { margin-bottom: 10px; }
 
+/* ---------- 面试日程（首页顶部，按日期分组） ---------- */
+.schedule {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 14px; box-shadow: var(--shadow);
+}
+.sch-head { display: flex; align-items: center; gap: 8px; }
+.sch-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.sch-meta { flex: 1; font-size: 12px; color: var(--text3); }
+.sch-toggle {
+  background: none; border: none; color: var(--brand); font-size: 13px;
+  cursor: pointer; padding: 2px 4px;
+}
+.sch-list { margin-top: 10px; }
+.schedule.collapsed .sch-list { display: none; }
+.sch-day + .sch-day { margin-top: 12px; }
+.sch-day-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.sch-day-lbl { font-size: 13px; font-weight: 600; color: var(--text); }
+.sch-day-date { font-size: 12px; color: var(--text3); }
+.sch-day-n { margin-left: auto; font-size: 12px; color: var(--text3); }
+.sch-day.is-today .sch-day-lbl { color: var(--brand); }
+.sch-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 10px; background: var(--bg); cursor: pointer;
+}
+.sch-row + .sch-row { margin-top: 6px; }
+.sch-row:active { background: var(--border); }
+.sch-day.is-today .sch-row:first-of-type { background: var(--brand-soft); }
+.sch-time {
+  flex-shrink: 0; width: 52px; font-size: 15px; font-weight: 700;
+  color: var(--brand); font-variant-numeric: tabular-nums;
+}
+.sch-main { flex: 1; min-width: 0; }
+.sch-line1 { font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-line2 { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.sch-stage { flex-shrink: 0; color: #fff; font-size: 11px; padding: 3px 9px; border-radius: 10px; }
+
+/* ---------- 阶段时间控件（编辑页 / 详情弹层共用） ---------- */
+.time-select {
+  flex-shrink: 0; width: 88px; height: 38px; font-size: 14px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--field);
+  color: var(--text); outline: none; font-variant-numeric: tabular-nums;
+}
+.time-select:focus { border-color: var(--brand); }
+.sheet-date-row .time-select { height: 42px; border-radius: 10px; }
+/* 还没填日期的行：时间控件不可用，用一个置灰按钮占位（点了给提示，不静默无反应） */
+.time-locked {
+  flex-shrink: 0; width: 88px; height: 38px; font-size: 13px; user-select: none;
+  border: 1px dashed var(--line-dash); border-radius: 8px; background: transparent;
+  color: var(--text3); cursor: pointer;
+}
+.sheet-date-row .time-locked { height: 42px; border-radius: 10px; }
+
 /* ---------- 通用组件 ---------- */
 .card { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
 .sec-title { font-size: 14px; font-weight: 600; color: var(--text2); margin: 18px 0 10px; }
@@ -851,6 +903,16 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
   /* 多岗位时选中圈是阶段选择入口，不能藏：保留圆并同步恢复输入区左边界 */
   .p-list.has-sel .pi-idx { display: flex; }
   .p-list.has-sel .p-item { --pind: 30px; }
+  /* 窄屏日期行放下「日期 + 时间 + 三个按钮」太挤：日期单独一行，时间与按钮换到第二行 */
+  .date-row { flex-wrap: wrap; row-gap: 8px; }
+  .date-row .date-picker { flex: 1 1 100%; order: 1; }
+  .date-row .time-select, .date-row .time-locked { order: 2; }
+  .date-row .date-acts { order: 3; margin-left: auto; }
+  .sheet-date-row { flex-wrap: wrap; row-gap: 8px; }
+  .sheet-date-row .sd-name { width: 100%; }
+  .sheet-date-row .sheet-date-input { flex: 1 1 100%; order: 1; }
+  .sheet-date-row .time-select, .sheet-date-row .time-locked { order: 2; }
+  .sheet-date-row .date-act { order: 3; margin-left: auto; }
 }
 
 /* ---------- 桌面端：内容居中，标签栏/FAB 收在容器内；编辑页收窄 + 表单两列 ---------- */

@@ -14,8 +14,8 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261010-1" data-app>
-<link rel="stylesheet" href="style.css?v=20261010-1">
+<link rel="preload" as="script" href="app.js?v=20261010-2" data-app>
+<link rel="stylesheet" href="style.css?v=20261010-2">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -107,6 +107,16 @@
           <button type="button" id="draft-resume" class="db-btn">继续填写</button>
           <button type="button" id="draft-discard" class="db-btn ghost">丢弃</button>
         </div>
+      </div>
+
+      <!-- 面试日程：今天起 7 天内、已填具体时间的阶段，按日期分组；没有安排时整块不显示 -->
+      <div id="schedule" class="schedule hidden">
+        <div class="sch-head">
+          <span class="sch-title">面试日程</span>
+          <span id="sch-meta" class="sch-meta"></span>
+          <button type="button" id="sch-toggle" class="sch-toggle" aria-expanded="true">收起</button>
+        </div>
+        <div id="schedule-list" class="sch-list"></div>
       </div>
 
       <div id="feed-filters" class="chips filter">

@@ -95,3 +95,13 @@ create policy "remark-media own delete" on storage.objects
   );
 
 alter table public.applications add column if not exists remark_images jsonb not null default '[]'::jsonb;
+
+-- ============================================================
+-- 阶段具体时间：从 2026-10-10 起需要执行下面这一句（幂等，可反复执行）。
+-- 面试 / 笔试这类阶段除了日期还要记具体几点，用 jsonb 按阶段存 "HH:MM"：
+--   {"一面":"14:30","二面":"09:00"}
+-- 单独用一列而不是塞进 stage_dates，是为了让 stage_dates 保持
+-- 「阶段 -> YYYY-MM-DD」的单一形态，日期推导阶段那套逻辑不用改。
+-- 时间挂在日期上：日期被清掉时对应的时间也一并删掉（前端保证）。
+-- ============================================================
+alter table public.applications add column if not exists stage_dates_at jsonb not null default '{}'::jsonb;

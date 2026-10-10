@@ -28,7 +28,7 @@ function nextKey(p) { return p + (++uidSeq); }
 // 阶段同样按岗位独立：每个岗位自带 stage / stageDates，阶段区只是批量写入这些岗位的工具
 function newPosition(name) {
   return { key: nextKey('p'), recId: null, name: name || '', base: '', remark: '', imgs: [],
-    stage: draftStage || '投递', stageDates: { ...(draftDates || {}) } };
+    stage: draftStage || '投递', stageDates: { ...(draftDates || {}) }, stageTimes: { ...(draftTimes || {}) } };
 }
 function newUnit() {
   return { key: nextKey('u'), recId: null, sub: '', date: todayStr(), positions: [newPosition()] };
@@ -44,12 +44,17 @@ let draftMode = 'single';   // 'single' 单个单位 | 'group' 集团投递
 // 这三个要排在 draftUnits 前面：draftUnits 初始化时 newUnit() → newPosition() 会读它们
 let draftStage = '投递';
 let draftDates = {};
+// 阶段具体时间：与 draftDates 同键（阶段 → "HH:MM"），只对填了日期的阶段有意义。
+// 单独一份而不是塞进 draftDates，目的是让 draftDates 保持「阶段 → YYYY-MM-DD」的单一形态，
+// stageFromDates 那套「日期推导阶段」的逻辑完全不用改。
+let draftTimes = {};
 // 阶段应用范围：null = 尚未点过圈（全部岗位，新增岗位自动纳入）；Set<岗位key> = 显式勾选的岗位
 //（独立开关：勾满全部也保留为 Set、空集也保留为 Set，不折叠回 null，否则点圈语义会跳变）。
 // 只在单个单位模式下且岗位数 > 1 时可改，其余场景恒为 null
 let stageScope = null;
 let draftUnits = [newUnit()];   // 表单里的单位列表：每个单位下挂多个岗位；单个单位模式只用第一个单位来装岗位
 let groupEditStageDates = null;   // 集团模式编辑已有记录时，保留该记录原有的各阶段日期（投递日由行内输入覆盖）
+let groupEditStageTimes = null;   // 同上，各阶段具体时间
 let groupEditStage = '投递';
 // ---------- 草稿自动保存 ----------
 // 编辑页填写过程中持续把表单状态快照到 localStorage（按用户隔离），关闭页面 / 中断后能恢复。
@@ -472,6 +477,17 @@ async function removeStaleImages(beforePaths, imgsNow) {
 function imgsOf(rec) {
   return Array.isArray(rec && rec.remark_images) ? rec.remark_images.filter(x => x && x.path) : [];
 }
+// 阶段具体时间：只认有日期的项（历史数据可能缺这一列，统一兜底成空对象）
+function timesOf(rec) {
+  const src = (rec && rec.stage_dates_at) || {};
+  const dates = (rec && rec.stage_dates) || {};
+  const out = {};
+  for (const [s, t] of Object.entries(src)) {
+    const v = cleanTime(t);
+    if (v && dates[s]) out[s] = v;
+  }
+  return out;
+}
 
 // 自然语言日期解析
 function parseDate(text) {
@@ -491,6 +507,63 @@ function parseDate(text) {
   m = t.match(/^(\d{1,2})[月\-\/](\d{1,2})日?$/);
   if (m) { const d = new Date(new Date().getFullYear(), +m[1] - 1, +m[2]); return isNaN(d) ? null : isoOf(d); }
   return null;
+}
+
+// ---------- 阶段具体时间（面试 / 笔试几点开始） ----------
+// 存库格式统一是 "HH:MM"（24 小时制、两位数），排序和「是不是今天已过」都依赖这个形态，
+// 所以输入层允许手写「下午3点 / 15:00 / 3:30」这类写法，进来先归一化再落库。
+const TIME_MINUTES = '00,30';        // 下拉刻度：整点与半点，够用又不至于列表太长
+function pad2(n) { return String(n).padStart(2, '0'); }
+// "14:30" / "14:30:00" → "14:30"；不合法返回 null
+function cleanTime(v) {
+  const m = String(v || '').trim().match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
+  if (!m) return null;
+  const h = +m[1], mi = +m[2];
+  if (h > 23 || mi > 59) return null;
+  return pad2(h) + ':' + pad2(mi);
+}
+// 自然语言时间解析：认不出一律返回 null（由调用方提示重填，不猜）
+function parseTime(text) {
+  if (!text) return null;
+  const t = String(text).trim();
+  if (!t) return null;
+  const direct = cleanTime(t);
+  if (direct) return direct;
+  // 「下午3点」「晚上8点半」「上午9:00」「14:30」
+  let m = t.match(/^(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(\d{1,2})\s*[点:时]\s*(半|\d{1,2})?\s*分?$/)
+       || t.match(/^(凌晨|早上|上午|中午|下午|傍晚|晚上)?\s*(\d{1,2})[:：](\d{1,2})$/);
+  if (!m) return null;
+  const seg = m[1] || '';
+  let h = +m[2];
+  const tail = String(m[3] || '').trim();
+  const mi = tail === '半' ? 30 : (tail ? +tail : 0);
+  if (seg) {
+    // 带时段词：按 12 小时制换算，写超过 12 的数字说明写错了
+    if (h < 1 || h > 12) return null;
+    if (seg === '下午' || seg === '傍晚' || seg === '晚上') { if (h < 12) h += 12; }
+    else if (seg === '中午') { if (h < 12) h += 12; }
+    else if (h === 12) h = 0;          // 凌晨 / 早上 / 上午 的 12 点 = 0 点
+  } else if (h <= 7) {
+    // 没写时段词的 1~7 点按下午理解（面试基本都在下午），别把「3点」存成凌晨 3 点
+    h += 12;
+  }
+  if (h > 23 || mi > 59) return null;
+  return pad2(h) + ':' + pad2(mi);
+}
+// 时间下拉：整点与半点，并把这条记录已经在用的自定义时间补进去（编辑旧数据时不丢）
+function timeSelectHTML(attr, value) {
+  const cur = cleanTime(value) || '';
+  const opts = ['<option value="">未定</option>'];
+  const seen = new Set(['']);
+  for (let h = 7; h <= 22; h++) {
+    for (const mm of TIME_MINUTES.split(',')) {
+      const v = pad2(h) + ':' + mm;
+      seen.add(v);
+      opts.push(`<option value="${v}"${cur === v ? ' selected' : ''}>${v}</option>`);
+    }
+  }
+  if (cur && !seen.has(cur)) opts.push(`<option value="${cur}" selected>${cur}</option>`);
+  return `<select class="time-select" ${attr}>${opts.join('')}</select>`;
 }
 
 // ---------- 日期框：点进去还空着就直接补今天 ----------
@@ -969,8 +1042,83 @@ function renderDraftBanner() {
     banner.classList.add('hidden');
   }
 }
+// ---------- 面试日程 ----------
+// 一条日程 = 「某条记录 × 某个阶段」，只收「填了日期 + 填了具体时间」的项。
+// 提醒窗口是今天起 7 天：今天之前（已经面过的）不提醒，第 8 天以后也先不占地方。
+const SCHEDULE_DAYS = 7;
+let schCollapsed = false;    // 日程块收起 / 展开：状态记在内存里，重渲染后保持
+function scheduleItems() {
+  const today = todayStr();
+  const end = shiftDays(SCHEDULE_DAYS - 1);
+  const out = [];
+  for (const r of records) {
+    const dates = r.stage_dates || {};
+    const times = timesOf(r);
+    for (const [stage, t] of Object.entries(times)) {
+      const d = dates[stage];
+      if (!d || d < today || d > end) continue;   // 只提醒今天起 7 天内
+      out.push({ id: r.id, stage, date: d, time: t, at: d + ' ' + t, rec: r });
+    }
+  }
+  // 同一天里按时间先后排；时间相同时按「阶段靠前」排，保证顺序稳定
+  out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1
+    : (ALL_STAGES.indexOf(a.stage) - ALL_STAGES.indexOf(b.stage))));
+  return out;
+}
+// 「今天 / 明天 / 后天」这类相对说法比「10月13日」好读得多，7 天内都写成相对日期
+function dayLabel(dateStr) {
+  const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '明天';
+  if (diff === 2) return '后天';
+  const m = dateStr.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return m ? `${+m[1]}月${+m[2]}日` : dateStr;
+}
+// 日程条目：左侧时间，右侧单位 / 岗位 / 阶段；点一下直接进那条记录的详情
+function scheduleRowHTML(it) {
+  const r = it.rec;
+  const unit = unitLabel([r]) || r.company || '未命名单位';
+  const color = COLORS[it.stage] || '#9AA0A6';
+  return `<div class="sch-row" data-sch="${it.id}" role="button" tabindex="0">
+    <div class="sch-time">${esc(it.time)}</div>
+    <div class="sch-main">
+      <div class="sch-line1">${esc(unit)}${r.position ? ' · ' + esc(r.position) : ''}</div>
+      <div class="sch-line2">${esc(it.date)} ${esc(dayLabel(it.date))}</div>
+    </div>
+    <span class="sch-stage" style="background:${color}">${esc(it.stage)}</span>
+  </div>`;
+}
+// 首页日程块：按日期分组，同一天内按时间排；没有安排就整块不显示（不占空间）
+function renderSchedule() {
+  const box = $('#schedule');
+  if (!box) return;
+  const list = scheduleItems();
+  if (!list.length) { box.classList.add('hidden'); $('#schedule-list').innerHTML = ''; return; }
+  const byDay = new Map();
+  for (const it of list) {
+    if (!byDay.has(it.date)) byDay.set(it.date, []);
+    byDay.get(it.date).push(it);
+  }
+  const today = todayStr();
+  const html = [...byDay.entries()].map(([d, items]) => `
+    <div class="sch-day${d === today ? ' is-today' : ''}">
+      <div class="sch-day-head"><span class="sch-day-lbl">${esc(dayLabel(d))}</span><span class="sch-day-date">${esc(d)}</span><span class="sch-day-n">${items.length} 场</span></div>
+      ${items.map(scheduleRowHTML).join('')}
+    </div>`).join('');
+  $('#schedule-list').innerHTML = html;
+  $('#sch-meta').textContent = `未来 ${SCHEDULE_DAYS} 天 · ${list.length} 场`;
+  box.classList.remove('hidden');
+  // 收起状态在重渲染后要保住（否则每次改完数据又自己展开）
+  const collapsed = schCollapsed;
+  $('#schedule-list').classList.toggle('hidden', collapsed);
+  $('#sch-toggle').textContent = collapsed ? '展开' : '收起';
+  $('#sch-toggle').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  box.classList.toggle('collapsed', collapsed);
+}
+// 面试日程块收起 / 展开（状态记在内存里，重渲染后保持）
 function renderFeed() {
   renderDraftBanner();
+  renderSchedule();
   const err = loadState === 'error';
   searchHitMap.clear();       // 首页不做命中标注，清掉上一次搜索留下的标注
   // 统计条：已投递 = 全部投递记录数（每条都算投过）；一面/二面/Offer 按该阶段计数（拒绝/放弃不上统计条）
@@ -1158,6 +1306,7 @@ function draftUnitsSnapshot() {
       imgs: (p.imgs || []).map(x => (x && x.path ? { path: x.path } : null)).filter(Boolean),
       stage: p.stage || '投递',
       stageDates: { ...(p.stageDates || {}) },
+      stageTimes: { ...(p.stageTimes || {}) },
     })),
   }));
 }
@@ -1173,7 +1322,9 @@ function buildDraft() {
     units: draftUnitsSnapshot(),
     stage: draftStage || '投递',
     stageDates: { ...(draftDates || {}) },
+    stageTimes: { ...(draftTimes || {}) },
     groupEditStageDates: groupEditStageDates ? { ...groupEditStageDates } : null,
+    groupEditStageTimes: groupEditStageTimes ? { ...groupEditStageTimes } : null,
     groupEditStage: groupEditStage || '投递',
     savedAt: Date.now(),
   };
@@ -1224,14 +1375,16 @@ function restoreDraft(d) {
     positions: (u.positions || []).map(p => ({
       key: nextKey('p'), recId: p.recId || null, name: p.name || '', base: p.base || '', remark: p.remark || '',
       imgs: (p.imgs || []).map(x => ({ path: x.path })),
-      stage: p.stage || '投递', stageDates: { ...(p.stageDates || {}) },
+      stage: p.stage || '投递', stageDates: { ...(p.stageDates || {}) }, stageTimes: { ...(p.stageTimes || {}) },
     })),
   }));
   if (!draftUnits.length) draftUnits = [newUnit()];
   draftStage = d.stage || '投递';
   draftDates = { ...(d.stageDates || {}) };
+  draftTimes = { ...(d.stageTimes || {}) };
   stageScope = null;
   groupEditStageDates = d.groupEditStageDates ? { ...d.groupEditStageDates } : null;
+  groupEditStageTimes = d.groupEditStageTimes ? { ...d.groupEditStageTimes } : null;
   groupEditStage = d.groupEditStage || '投递';
   draftScratch = { company: d.company || '', groupSingle: d.groupSingle || '', groupName: d.groupName || '', link: d.link || '' };
   restoringDraft = true;
@@ -1256,6 +1409,7 @@ function renderEdit() {
   // 阶段缓冲区：编辑时取原记录的日期，新增默认「投递」日为今天（newPosition 会把这份缓冲带给新岗位）
   draftDates = rec && rec.stage_dates ? { ...rec.stage_dates }
     : (rec ? {} : { '投递': todayStr() });
+  draftTimes = rec && rec.stage_dates_at ? { ...rec.stage_dates_at } : {};
   draftStage = stageFromDates(draftDates) || (rec ? rec.stage : '投递');
   // 集团模式：编辑时这条记录成为一张单位卡（一个岗位）；老数据 company 可能是全称（如 中信银行北京市分行），回填到具体单位
   if (draftMode === 'group') {
@@ -1267,11 +1421,13 @@ function renderEdit() {
           // 岗位带上原记录 id：保存时这条走 update，本次新增的岗位行走 insert；
           // 阶段也带回岗位自己（集团模式下阶段同样按岗位独立填写）
           positions: [{ key: nextKey('p'), recId: rec.id, name: rec.position || '', base: rec.base || '', remark: rec.remark || '', imgs: imgsOf(rec),
-            stage: rec.stage || '投递', stageDates: rec.stage_dates ? { ...rec.stage_dates } : {} }],
+            stage: rec.stage || '投递', stageDates: rec.stage_dates ? { ...rec.stage_dates } : {},
+            stageTimes: rec.stage_dates_at ? { ...rec.stage_dates_at } : {} }],
         }]
       : [newUnit()];
     // 编辑已有记录：保留其原有各阶段日期（兜底给「集团主体」空卡），新增则从空开始
     groupEditStageDates = rec && rec.stage_dates ? { ...rec.stage_dates } : null;
+    groupEditStageTimes = rec && rec.stage_dates_at ? { ...rec.stage_dates_at } : null;
     groupEditStage = rec ? (rec.stage || '投递') : '投递';
   } else {
     // 单个单位模式：单位 / 链接在外层共用字段上；Base / 备注 / 阶段挂在岗位行里，这里只需要装岗位。
@@ -1280,9 +1436,11 @@ function renderEdit() {
       key: nextKey('u'), recId: rec ? rec.id : null,
       positions: [{ key: nextKey('p'), recId: rec ? rec.id : null, name: rec ? (rec.position || '') : '', base: rec ? (rec.base || '') : '', remark: rec ? (rec.remark || '') : '', imgs: rec ? imgsOf(rec) : [],
         stage: rec ? (rec.stage || '投递') : '投递',
-        stageDates: rec ? { ...(rec.stage_dates || {}) } : { '投递': todayStr() } }],
+        stageDates: rec ? { ...(rec.stage_dates || {}) } : { '投递': todayStr() },
+        stageTimes: rec ? { ...(rec.stage_dates_at || {}) } : {} }],
     }];
     groupEditStageDates = null;
+    groupEditStageTimes = null;
     groupEditStage = '投递';
   }
   renderUnits();
@@ -1669,16 +1827,22 @@ function hintFor(input, hint, active) {
   }
 }
 function renderDateRows() {
-  $('#edit-dates').innerHTML = ALL_STAGES.map(s => `
+  // 时间只在填了日期的阶段上有意义，没填日期的行不给时间控件（半透明置灰，避免误填）
+  $('#edit-dates').innerHTML = ALL_STAGES.map(s => {
+    const hasDate = !!draftDates[s];
+    return `
     <div class="date-row">
       <div class="date-name"><span class="date-dot" style="background:${COLORS[s]}"></span>${s}</div>
       <input type="date" class="date-picker" data-dp="${s}" data-skip="${dateSkip.has('dp:' + s) ? '1' : ''}" value="${draftDates[s] ? esc(draftDates[s]) : ''}">
+      ${hasDate ? timeSelectHTML(`data-dt="${s}"`, draftTimes[s])
+        : '<button type="button" class="time-locked" data-dt-need="' + s + '" title="先填日期，再填具体时间">时间</button>'}
       <div class="date-acts">
         <button type="button" class="date-act" data-today="${s}">今日</button>
         <button type="button" class="date-act" data-yesterday="${s}">昨天</button>
         <button type="button" class="date-act clear" data-clear="${s}">清除</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   // 折叠标题上显示已填项数，不用展开就能看到有没有填
   const n = ALL_STAGES.filter(s => String(draftDates[s] || '').trim()).length;
   const meta = $('#dates-meta');
@@ -1709,6 +1873,7 @@ function pruneLaterStageDates(stage) {
   let changed = false;
   for (const s of ALL_STAGES.slice(idx + 1)) {
     if (draftDates[s]) { delete draftDates[s]; changed = true; }
+    if (draftTimes[s]) { delete draftTimes[s]; changed = true; }   // 日期没了，挂在它上面的时间一并清掉
   }
   return changed;
 }
@@ -1718,14 +1883,16 @@ function syncBufferFromScope() {
   if (!ts.length) return;
   const p = ts[0];
   draftDates = { ...(p.stageDates || {}) };
+  draftTimes = { ...(p.stageTimes || {}) };
   draftStage = stageFromDates(draftDates) || p.stage || '投递';
   renderDateRows();
   renderEditStagesOnly();
 }
-// 把阶段区的当前内容（draftStage + draftDates）整份写到目标岗位，并刷新岗位行上的阶段徽章
+// 把阶段区的当前内容（draftStage + draftDates + draftTimes）整份写到目标岗位，并刷新岗位行上的阶段徽章
 function applyBufferToTargets() {
   for (const p of stageScopeTargets()) {
     p.stageDates = { ...draftDates };
+    p.stageTimes = { ...draftTimes };
     p.stage = stageFromDates(draftDates) || draftStage || '投递';
   }
   refreshPosStageBadges();
@@ -1807,10 +1974,25 @@ function collectForm() {
     update_time: new Date().toISOString(),
   };
 }
-// 单条记录的阶段载荷：stage_dates 取岗位自己的，阶段由日期推导（推导不出退回手选值）
+// 单条记录的阶段载荷：stage_dates 取岗位自己的，阶段由日期推导（推导不出退回手选值）。
+// stage_dates_at 只保留「既有日期又有时间」的项，避免日期被清掉后留下孤立的垃圾时间。
+function stageTimesOf(p) {
+  const times = {};
+  const dates = p.stageDates || {};
+  for (const [s, t] of Object.entries(p.stageTimes || {})) {
+    const v = cleanTime(t);
+    if (v && dates[s]) times[s] = v;
+  }
+  return times;
+}
 function stagePayloadOf(p) {
   const stage_dates = { ...(p.stageDates || {}) };
-  return { stage: stageFromDates(stage_dates) || p.stage || '投递', stage_dates, apply_date: stage_dates['投递'] || null };
+  return {
+    stage: stageFromDates(stage_dates) || p.stage || '投递',
+    stage_dates,
+    stage_dates_at: stageTimesOf(p),
+    apply_date: stage_dates['投递'] || null,
+  };
 }
 // 批量粘贴：把 textarea 里的多行岗位并入某个单位的岗位列表（先填已有的空行，再新增）
 function mergePositionLines(u, text) {
@@ -2431,15 +2613,15 @@ async function doSaveSingleRecord() {
   let error = null, n = 0;
   if (editingId) {
     const first = list[0];
-    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark, remark_images: first.imgs, stage: first.stage, stage_dates: first.stage_dates, apply_date: first.apply_date }).eq('id', editingId);
+    const r = await sb.from('applications').update({ ...base, position: first.name, base: first.base, remark: first.remark, remark_images: first.imgs, stage: first.stage, stage_dates: first.stage_dates, stage_dates_at: first.stage_dates_at, apply_date: first.apply_date }).eq('id', editingId);
     error = r.error; n = 1;
     const rest = list.slice(1);
     if (!error && rest.length) {
-      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, apply_date: x.apply_date })));
+      const r2 = await sb.from('applications').insert(rest.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, stage_dates_at: x.stage_dates_at, apply_date: x.apply_date })));
       error = r2.error; n += rest.length;
     }
   } else {
-    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, apply_date: x.apply_date })));
+    const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, stage_dates_at: x.stage_dates_at, apply_date: x.apply_date })));
     error = r.error; n = list.length;
   }
   if (error) { toast('保存失败：' + error.message, 'error'); return; }
@@ -2480,6 +2662,8 @@ async function doSaveGroupRecord() {
       const stage_dates = { ...(p.stageDates || {}) };
       if (u.date) stage_dates['投递'] = u.date; else delete stage_dates['投递'];
       const stage = stageFromDates(stage_dates) || p.stage || (isEdit ? groupEditStage : '投递');
+      // 时间同样只保留有日期的项（单位卡的投递日会覆盖岗位里的投递，时间口径跟日期保持一致）
+      const stage_dates_at = stageTimesOf({ stageDates: stage_dates, stageTimes: p.stageTimes });
       payload.push({
         id: p.recId || null,
         company: (isEdit && keptCompany && keptCompany !== group) ? keptCompany : group,
@@ -2493,6 +2677,7 @@ async function doSaveGroupRecord() {
         remark_images: p.imgs || [],
         stage,
         stage_dates,
+        stage_dates_at,
         apply_date: stage_dates['投递'] || null,
         update_time: new Date().toISOString(),
       });
@@ -2504,6 +2689,7 @@ async function doSaveGroupRecord() {
     payload.push({
       id: editingId, company: keptCompany || group, group_name: group, sub_unit: null, position: null,
       base: null, link, remark: null, stage: groupEditStage || '投递', stage_dates,
+      stage_dates_at: stageTimesOf({ stageDates: stage_dates, stageTimes: groupEditStageTimes }),
       apply_date: stage_dates['投递'] || null, update_time: new Date().toISOString(),
     });
   }
@@ -2538,7 +2724,7 @@ async function doSaveGroupRecord() {
 // 删除后给一次后悔机会：删之前把行内容留一份快照，撤销时原样写回。
 // 不复用原 id（id 是 identity 列，显式写入会报错），但 update_time 一并带回去，排序位置不变。
 const WRITE_FIELDS = ['company','group_name','base','sub_unit','position','link','remark','remark_images',
-  'stage','stage_dates','apply_date','update_time'];
+  'stage','stage_dates','stage_dates_at','apply_date','update_time'];
 let lastDeleted = null;
 
 async function deleteRecord(id) {
@@ -2607,9 +2793,20 @@ function flushSheetDates() {
   const keys = new Set([...Object.keys(cur), ...Object.keys(next)]);
   let changed = false;
   for (const k of keys) { if ((cur[k] || '') !== (next[k] || '')) { changed = true; break; } }
+  // 时间：读下拉当前值；日期被清空的那一项时间一并清掉，日期还在的按选择写入
+  const nextTimes = {};
+  const curTimes = timesOf(rec);
+  document.querySelectorAll('#sheet-body [data-sdt]').forEach((el) => {
+    const stage = el.dataset.sdt;
+    const v = cleanTime(el.value);
+    if (v && next[stage]) nextTimes[stage] = v;
+  });
+  for (const stage of new Set([...Object.keys(curTimes), ...Object.keys(nextTimes)])) {
+    if ((curTimes[stage] || '') !== (nextTimes[stage] || '')) { changed = true; break; }
+  }
   if (!changed) return;
   const derived = stageFromDates(next);
-  patchSheetDates(sheetId, next, derived ? ('已记录 · 当前阶段：' + derived) : '已保存日期');
+  patchSheetDates(sheetId, next, derived ? ('已记录 · 当前阶段：' + derived) : '已保存日期', nextTimes);
 }
 function closeSheet() {
   flushSheetDates();
@@ -2780,9 +2977,12 @@ function renderSheet(id) {
 
   const dates = ALL_STAGES.map(s => {
     const v = rec.stage_dates && rec.stage_dates[s];
+    const t = timesOf(rec)[s];
     return `<div class="sheet-date-row">
       <div class="sd-name"><span class="sd-dot" style="background:${COLORS[s]}"></span>${s}</div>
       <input class="sheet-date-input" data-sds="${s}" placeholder="未记录 · 可填 今天 / 9月28日" value="${v ? esc(v) : ''}">
+      ${v ? timeSelectHTML(`data-sdt="${s}"`, t)
+        : '<button type="button" class="time-locked" data-sdt-need="' + s + '" title="先填日期，再填具体时间">时间</button>'}
       <button class="date-act" data-sdtoday="${s}">今日</button>
     </div>`;
   }).join('');
@@ -2816,13 +3016,27 @@ function refreshListsAfterEdit() {
   renderFeed();
   renderSearch();
 }
-async function patchSheetDates(id, dates, msg) {
+// times：可选的「阶段 → 具体时间」整份快照。传了就整体替换该记录的时间表，
+// 不传则只按 dates 的增删同步（日期被清掉的项，时间也跟着清）。
+async function patchSheetDates(id, dates, msg, times) {
   const ref = records.find(r => r.id === id); if (!ref) return;
   const next = { ...(ref.stage_dates || {}), ...dates };
   for (const k of Object.keys(next)) if (!next[k]) delete next[k];
   const derived = stageFromDates(next);
+  let nextTimes;
+  if (times) {
+    nextTimes = {};
+    for (const [s, t] of Object.entries(times)) {
+      const v = cleanTime(t);
+      if (v && next[s]) nextTimes[s] = v;      // 只保留有日期的项
+    }
+  } else {
+    nextTimes = timesOf(ref);
+    for (const s of Object.keys(nextTimes)) if (!next[s]) delete nextTimes[s];
+  }
   const patch = {
     stage_dates: next,
+    stage_dates_at: nextTimes,
     apply_date: next['投递'] || null,
     update_time: new Date().toISOString(),
     stage: derived || '投递',
@@ -2840,6 +3054,15 @@ async function patchSheetDate(id, stage, value, opts) {
   // （不能写成「传空值就什么都不传」——那样库里原值还在，界面重新渲染后日期又冒出来）
   const dates = { [stage]: value || '' };
   await patchSheetDates(id, dates, (opts && opts.silent) ? '' : (value ? ('已记录 · 当前阶段：' + (stageFromDates({ ...(records.find(r => r.id === id) || {}).stage_dates, ...dates }) || '投递')) : '已清除该日期'));
+}
+// 弹层里改具体时间：只更新这一个阶段，其余阶段保留原值
+async function patchSheetTime(id, stage, value) {
+  const rec = records.find(r => r.id === id); if (!rec) return;
+  if (!((rec.stage_dates || {})[stage])) { toast('先填这一阶段的日期，再填具体时间'); return; }
+  const v = cleanTime(value);
+  const times = { ...timesOf(rec) };
+  if (v) times[stage] = v; else delete times[stage];
+  await patchSheetDates(id, {}, v ? ('已记录 · ' + stage + ' ' + v) : '已清除该时间', times);
 }
 
 // ---------- 账户 ----------
@@ -2966,6 +3189,16 @@ function bindEvents() {
   $('#draft-discard').addEventListener('click', () => { clearDraft(); renderDraftBanner(); });
   $('#btn-discard-draft').addEventListener('click', () => { clearDraft(); openEditView(); });
 
+  // 面试日程：点条目直接进那条记录的详情；点「收起 / 展开」折叠整个日程块
+  $('#schedule').addEventListener('click', (e) => {
+    const row = e.target.closest('[data-sch]');
+    if (row) { openSheet(Number(row.dataset.sch)); return; }
+    if (e.target.closest('#sch-toggle')) {
+      schCollapsed = !schCollapsed;
+      renderSchedule();
+    }
+  });
+
   // feed 筛选
   $('#feed-filters').addEventListener('click', (e) => {
     const t = e.target.closest('[data-filter]'); if (!t) return;
@@ -3040,6 +3273,8 @@ function bindEvents() {
       }
       return;
     }
+    const needT = e.target.closest('[data-sdt-need]');
+    if (needT) { toast('先填这一阶段的日期，再填具体时间'); return; }
     const dt = e.target.closest('[data-sdtoday]');
     if (dt) { patchSheetDate(sheetId, dt.dataset.sdtoday, todayStr()); return; }
     const ed = e.target.closest('[data-edit]');
@@ -3047,8 +3282,10 @@ function bindEvents() {
     const dl = e.target.closest('[data-del]');
     if (dl) { deleteRecord(Number(dl.dataset.del)); }
   });
-  // 弹层日期直接编辑：解析自然语言/原生日期值，清空即删除该日期
+  // 弹层日期直接编辑：解析自然语言/原生日期值，清空即删除该日期；时间是选好的 HH:MM
   $('#sheet').addEventListener('change', (e) => {
+    const sel = e.target.closest('[data-sdt]');
+    if (sel) { patchSheetTime(sheetId, sel.dataset.sdt, sel.value); return; }
     const inp = e.target.closest('[data-sds]'); if (!inp) return;
     const raw = inp.value.trim();
     if (!raw) { patchSheetDate(sheetId, inp.dataset.sds, ''); return; }
@@ -3085,10 +3322,20 @@ function bindEvents() {
     const dp = e.target.closest('[data-dp]');
     if (dp) {
       draftDates[dp.dataset.dp] = dp.value || '';
+      if (!dp.value) delete draftTimes[dp.dataset.dp];   // 日期清掉，挂在它上面的时间一并清掉
       const derived = stageFromDates(draftDates);
       if (derived) draftStage = derived;
       applyBufferToTargets();
       renderDateRows();
+      renderEditStagesOnly();
+      return;
+    }
+    const ts = e.target.closest('[data-dt]');
+    if (ts) {
+      const stage = ts.dataset.dt;
+      const v = cleanTime(ts.value);
+      if (v) draftTimes[stage] = v; else delete draftTimes[stage];
+      applyBufferToTargets();
       renderEditStagesOnly();
     }
   });
@@ -3103,13 +3350,16 @@ function bindEvents() {
     });
   });
   $('#edit-dates').addEventListener('click', (e) => {
+    // 没填日期的行上，时间控件是置灰的提示按钮：点它先提示补日期，而不是静默无反应
+    const need = e.target.closest('[data-dt-need]');
+    if (need) { toast('先填这一阶段的日期，再填具体时间'); return; }
     const td = e.target.closest('[data-today]');
     if (td) {
       draftDates[td.dataset.today] = todayStr();
       const derived = stageFromDates(draftDates);
       if (derived) draftStage = derived;
       applyBufferToTargets();
-      renderDateRows();
+      renderDateRows();       // 重新渲染：刚才没日期的行要露出时间控件
       renderEditStagesOnly();
       return;
     }
@@ -3127,6 +3377,7 @@ function bindEvents() {
     if (cl) {
       dateSkip.add('dp:' + cl.dataset.clear);
       delete draftDates[cl.dataset.clear];
+      delete draftTimes[cl.dataset.clear];   // 日期和它上面的时间一起清
       const derived = stageFromDates(draftDates);
       draftStage = derived || '投递';
       applyBufferToTargets();
