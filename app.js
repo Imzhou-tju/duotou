@@ -1042,7 +1042,7 @@ function renderDraftBanner() {
     banner.classList.add('hidden');
   }
 }
-// ---------- 面试日程 ----------
+// ---------- 日程 ----------
 // 一条日程 = 「某条记录 × 某个阶段」，只要那一天在未来就收进来——具体时间可填可不填。
 // 提醒窗口是今天起 7 天：今天之前（已经面过的）不提醒，第 8 天以后也先不占地方。
 const SCHEDULE_DAYS = 7;
@@ -1129,7 +1129,7 @@ function renderSchedule() {
   $('#sch-toggle').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   box.classList.toggle('collapsed', collapsed);
 }
-// 面试日程块收起 / 展开（状态记在内存里，重渲染后保持）
+// 日程块收起 / 展开（状态记在内存里，重渲染后保持）
 function renderFeed() {
   renderDraftBanner();
   renderSchedule();
@@ -3203,7 +3203,7 @@ function bindEvents() {
   $('#draft-discard').addEventListener('click', () => { clearDraft(); renderDraftBanner(); });
   $('#btn-discard-draft').addEventListener('click', () => { clearDraft(); openEditView(); });
 
-  // 面试日程：点条目直接进那条记录的详情；点「收起 / 展开」折叠整个日程块
+  // 日程：点条目直接进那条记录的详情；点「收起 / 展开」折叠整个日程块
   $('#schedule').addEventListener('click', (e) => {
     const row = e.target.closest('[data-sch]');
     if (row) { openSheet(Number(row.dataset.sch)); return; }

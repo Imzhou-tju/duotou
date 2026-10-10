@@ -176,7 +176,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 16px 16px calc(var(--tab
 .db-btn:active { opacity: .85; }
 #btn-discard-draft { margin-bottom: 10px; }
 
-/* ---------- 面试日程（首页顶部，按日期分组） ---------- */
+/* ---------- 日程（首页顶部，按日期分组） ---------- */
 .schedule {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 12px 14px; margin-bottom: 14px; box-shadow: var(--shadow);
