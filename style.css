@@ -688,15 +688,16 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
   display: flex; align-items: center; gap: 10px; padding: 12px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  border-left: 3px solid var(--pos-accent, transparent);
 }
 .g-child-row:active { background: var(--border); }
 .g-child-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .g-child-main { flex: 1; min-width: 0; }
 .g-child-name { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
-/* 多岗位时的序号圆：让同一单位下的每个岗位一眼可分 */
+/* 多岗位时的序号圆：底色用该行的轮换识别色，白字 */
 .g-child-idx {
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--brand-soft); color: var(--brand);
+  color: #fff;
   font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
 }
 .g-child-name-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

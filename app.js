@@ -2795,6 +2795,8 @@ function closeSheet() {
 // 弹层里的岗位行：紧凑进度条（只画节点与连线，不写阶段文字，窄行才放得下）
 // + 「当前阶段（日期）· 更新于」，和列表单卡的 rec-foot 同一套信息
 // unitTag：只有 1 个岗位时把单位名并进卡片，省掉一层「单位标题 + 卡片」的重复结构
+// 多岗位行的轮换识别色：与阶段色（COLORS）区分开，色相拉满、饱和度适中，亮暗主题都够对比
+const POS_ACCENTS = ['#2B6CFF', '#0FA97E', '#F59A23', '#8B5CF6', '#E85D75', '#0EA5E9'];
 function posRowHTML(r, showGroup, unitTag, idx, total) {
   const rc = COLORS[r.stage] || '#9AA0A6';
   const latest = r.stage_dates && r.stage_dates[r.stage];
@@ -2804,9 +2806,12 @@ function posRowHTML(r, showGroup, unitTag, idx, total) {
   const showBase = !(unitTag && city && unitTag.includes(city));
   const detail = [showBase ? normBase : '', showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
   const stageDateText = latest ? `（${esc(latest)}）` : '';
-  // 多个岗位时给序号圆，让每个岗位一眼可分（单岗位不加，免得孤零零一个「1」）
-  const idxHTML = (idx && total > 1) ? `<span class="g-child-idx">${idx}</span>` : '';
-  return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0">
+  // 多个岗位时给序号圆 + 每行一个轮换识别色（色条 + 同色序号圆），
+  // 同 Base 同阶段的两行也能一眼分开；单岗位不加，免得孤零零一个「1」。
+  const isMulti = idx && total > 1;
+  const accent = isMulti ? POS_ACCENTS[(idx - 1) % POS_ACCENTS.length] : '';
+  const idxHTML = isMulti ? `<span class="g-child-idx" style="background:${accent}">${idx}</span>` : '';
+  return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0"${accent ? ` style="--pos-accent:${accent}"` : ''}>
     <div class="g-child-main">
       <div class="g-child-name">${idxHTML}<span class="g-child-name-txt">${esc(r.position || '未填岗位')}</span>${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
       ${(unitTag || detail) ? `<div class="g-child-sub">${unitTag ? `<span class="g-child-tag">${esc(unitTag)}</span>` : ''}${detail}</div>` : ''}
