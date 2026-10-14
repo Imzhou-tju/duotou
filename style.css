@@ -683,15 +683,23 @@ img[data-path]:not([src]), img.img-broken { color: transparent; }
 .rec.group .rec-foot .rec-badge { margin-left: 0; }
 
 /* 集团弹层内：子投递列表 */
-.g-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.g-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 .g-child-row {
   display: flex; align-items: center; gap: 10px; padding: 12px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
 }
 .g-child-row:active { background: var(--border); }
 .g-child-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .g-child-main { flex: 1; min-width: 0; }
-.g-child-name { font-weight: 600; font-size: 15px; }
+.g-child-name { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
+/* 多岗位时的序号圆：让同一单位下的每个岗位一眼可分 */
+.g-child-idx {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand);
+  font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.g-child-name-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-child-sub { color: var(--text2); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 只有一个岗位时，单位名以浅蓝标签并入卡片，替代独立的一层单位标题 */
 .g-child-tag {

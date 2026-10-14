@@ -2795,7 +2795,7 @@ function closeSheet() {
 // 弹层里的岗位行：紧凑进度条（只画节点与连线，不写阶段文字，窄行才放得下）
 // + 「当前阶段（日期）· 更新于」，和列表单卡的 rec-foot 同一套信息
 // unitTag：只有 1 个岗位时把单位名并进卡片，省掉一层「单位标题 + 卡片」的重复结构
-function posRowHTML(r, showGroup, unitTag) {
+function posRowHTML(r, showGroup, unitTag, idx, total) {
   const rc = COLORS[r.stage] || '#9AA0A6';
   const latest = r.stage_dates && r.stage_dates[r.stage];
   const normBase = normalizeLocation(r.base);
@@ -2804,9 +2804,11 @@ function posRowHTML(r, showGroup, unitTag) {
   const showBase = !(unitTag && city && unitTag.includes(city));
   const detail = [showBase ? normBase : '', showGroup ? r.group_name : null].filter(Boolean).map(esc).join(' · ');
   const stageDateText = latest ? `（${esc(latest)}）` : '';
+  // 多个岗位时给序号圆，让每个岗位一眼可分（单岗位不加，免得孤零零一个「1」）
+  const idxHTML = (idx && total > 1) ? `<span class="g-child-idx">${idx}</span>` : '';
   return `<div class="g-child-row" data-child="${r.id}" role="button" tabindex="0">
     <div class="g-child-main">
-      <div class="g-child-name">${esc(r.position || '未填岗位')}${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
+      <div class="g-child-name">${idxHTML}<span class="g-child-name-txt">${esc(r.position || '未填岗位')}</span>${r.link ? ' <span class="rec-badge">🔗</span>' : ''}</div>
       ${(unitTag || detail) ? `<div class="g-child-sub">${unitTag ? `<span class="g-child-tag">${esc(unitTag)}</span>` : ''}${detail}</div>` : ''}
       ${pipelineMiniHTML(r)}
       <div class="g-child-foot">当前：<strong style="color:${rc}">${esc(r.stage)}</strong>${stageDateText} · 更新于 ${relTime(r.update_time) || '—'}</div>
@@ -2870,7 +2872,7 @@ function openGroupSheet(groupName) {
     // 一个单位下只有 1 个岗位时不再单独起标题（标题 + 卡片两层是重复结构），单位名并进卡片
     if (urs.length > 1) {
       inner += `<div class="u-group-head">${esc(label)}<span class="u-group-n">${urs.length} 个岗位</span></div>`
-        + urs.map(r => posRowHTML(r, false, '')).join('');
+        + urs.map((r, i) => posRowHTML(r, false, '', i + 1, urs.length)).join('');
     } else {
       inner += posRowHTML(urs[0], false, label);
     }
@@ -2902,7 +2904,7 @@ function openUnitSheet(key) {
       <span class="pill" style="background:${color}">${esc(gp.stage)}</span>
     </div>
     <div class="sheet-sub">${recs.length} 个岗位 · 点任意岗位查看 / 编辑详情</div>
-    <div class="g-list">${recs.map(r => posRowHTML(r, true)).join('')}</div>`;
+    <div class="g-list">${recs.map((r, i) => posRowHTML(r, true, '', i + 1, recs.length)).join('')}</div>`;
   sheetId = null;
   $('#sheet').classList.remove('hidden');
   overlayOpen('sheet');   // 进入历史栈，返回键可关掉弹层而不是退出应用
@@ -2969,7 +2971,7 @@ function renderSheet(id) {
   const siblings = records.filter(r => r.id !== rec.id && unitKey(r) === unitKey(rec));
   const sibHTML = siblings.length ? `
     <div class="sheet-sec-title">该单位其他岗位（${siblings.length}）</div>
-    <div class="g-list">${siblings.map(r => posRowHTML(r, false)).join('')}</div>` : '';
+    <div class="g-list">${siblings.map((r, i) => posRowHTML(r, false, '', i + 1, siblings.length)).join('')}</div>` : '';
 
   $('#sheet-body').innerHTML = `
     <div class="sheet-top">
