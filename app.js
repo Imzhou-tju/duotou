@@ -755,24 +755,35 @@ async function enterApp() {
   $('#app-root').classList.remove('hidden');
   $('#user-email').textContent = user.email || '';
   await loadRecords();
+  // 登录过期被弹回去的：登录成功后直接回编辑页，草稿原样恢复（内容一直在本地存着）
+  if (authReturnEdit) {
+    authReturnEdit = false;
+    const d = readDraft();
+    if (d && !draftIsEmpty(d)) { restoreDraft(d); return; }
+  }
   showView('feed');
 }
 
 // 写库前先确认登录态。supabase-js 的 insert / update / delete 不会自动刷新过期令牌，
 // 会话过期后请求仍会发出去，数据库回一句难懂的「new row violates row-level security
-// policy」。这里主动 getSession（已过期会顺带刷新），没有会话就直接回登录页重登，
-// 别让用户对着一句安全策略报错猜原因。
+// policy」。这里主动 getSession（已过期会顺带刷新），没有会话就把刚填的内容落盘、
+// 记住要从编辑页来，然后回登录页重登——登录成功后直接回到编辑页，草稿原样恢复，
+// 不用重新填写。
+let authReturnEdit = false;    // 被登录过期弹回登录页时，记住登录成功后要回编辑页
 async function ensureSession() {
   if (!sb) return false;
   try {
     const { data } = await sb.auth.getSession();
     if (data && data.session) { user = data.session.user; return true; }
   } catch (e) { /* 取会话失败按未登录处理 */ }
+  // 先落盘再走登录流程：persistDraft 在未登录时会直接返回，不落盘
+  try { persistDraft(); } catch (e) { /* 忽略 */ }
+  authReturnEdit = !!$('#view-edit') && !$('#view-edit').classList.contains('hidden');
   user = null; records = [];
   hideBoot();
   $('#app-root').classList.add('hidden');
   $('#view-auth').classList.remove('hidden');
-  toast('登录状态已过期，请重新登录', 'error');
+  toast('登录状态已过期，请重新登录；你填的内容已保存，登录后自动回到编辑页', 'error');
   return false;
 }
 // RLS / 令牌类报错翻译成人话：多半是没登录或会话过期，也可能真是数据库策略缺了
