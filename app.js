@@ -758,6 +758,33 @@ async function enterApp() {
   showView('feed');
 }
 
+// 写库前先确认登录态。supabase-js 的 insert / update / delete 不会自动刷新过期令牌，
+// 会话过期后请求仍会发出去，数据库回一句难懂的「new row violates row-level security
+// policy」。这里主动 getSession（已过期会顺带刷新），没有会话就直接回登录页重登，
+// 别让用户对着一句安全策略报错猜原因。
+async function ensureSession() {
+  if (!sb) return false;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) { user = data.session.user; return true; }
+  } catch (e) { /* 取会话失败按未登录处理 */ }
+  user = null; records = [];
+  hideBoot();
+  $('#app-root').classList.add('hidden');
+  $('#view-auth').classList.remove('hidden');
+  toast('登录状态已过期，请重新登录', 'error');
+  return false;
+}
+// RLS / 令牌类报错翻译成人话：多半是没登录或会话过期，也可能真是数据库策略缺了
+function friendlySaveError(e) {
+  const msg = (e && e.message) || String(e || '');
+  if (/row-level security|permission denied|42501|JWT expired|invalid.*token/i.test(msg)) {
+    return '没有写入权限（' + msg + '）。请先退出账号重新登录再试；若刚登录过仍报错，'
+      + '说明数据库的 RLS 写入策略缺失，需要在 Supabase 里补「own insert」策略';
+  }
+  return msg;
+}
+
 // 列表三态：拉取中 / 成功（可能为空） / 失败。区分开，避免网络错误时被误读成「你还没有记录」
 let loadState = 'idle';        // 'idle' | 'loading' | 'ok' | 'error'
 let loadErrorMessage = '';
@@ -2554,6 +2581,7 @@ async function saveRecord() {
   btn.disabled = true;
   btn.textContent = '保存中…';
   try {
+    if (!(await ensureSession())) return;
     if (draftMode === 'group') await doSaveGroupRecord();
     else await doSaveSingleRecord();
   } finally {
@@ -2602,7 +2630,7 @@ async function doSaveSingleRecord() {
     const r = await sb.from('applications').insert(list.map(x => ({ ...base, position: x.name, base: x.base, remark: x.remark, remark_images: x.imgs, stage: x.stage, stage_dates: x.stage_dates, stage_dates_at: x.stage_dates_at, apply_date: x.apply_date })));
     error = r.error; n = list.length;
   }
-  if (error) { toast('保存失败：' + error.message, 'error'); return; }
+  if (error) { toast('保存失败：' + friendlySaveError(error), 'error'); return; }
   if (editingId) await removeStaleImages(beforeImgs, list[0] && list[0].imgs);
   const gName = base.group_name;
   toast(gName
@@ -2686,7 +2714,7 @@ async function doSaveGroupRecord() {
     const r = await sb.from('applications').insert(inserts);
     if (r.error) error = r.error;
   }
-  if (error) { toast('保存失败：' + error.message, 'error'); return; }
+  if (error) { toast('保存失败：' + friendlySaveError(error), 'error'); return; }
   for (const p2 of updates) {
     const before = beforeImgs.get(p2.id) || [];
     await removeStaleImages(before, p2.remark_images);
@@ -2710,8 +2738,9 @@ async function deleteRecord(id) {
   if (!id) return;
   const row = records.find(r => r.id === id);
   if (!confirm('确定删除这条投递记录？')) return;
+  if (!(await ensureSession())) return;
   const { error } = await sb.from('applications').delete().eq('id', id);
-  if (error) { toast('删除失败：' + error.message, 'error'); return; }
+  if (error) { toast('删除失败：' + friendlySaveError(error), 'error'); return; }
   // 记录已删，图片留着就是孤儿文件，跟着删（失败只提示，不影响撤销）
   await removeImageFiles(imgsOf(row).map(x => x.path));
   lastDeleted = row || null;
@@ -3005,6 +3034,7 @@ function refreshListsAfterEdit() {
 // 不传则只按 dates 的增删同步（日期被清掉的项，时间也跟着清）。
 async function patchSheetDates(id, dates, msg, times) {
   const ref = records.find(r => r.id === id); if (!ref) return;
+  if (!(await ensureSession())) return;
   const next = { ...(ref.stage_dates || {}), ...dates };
   for (const k of Object.keys(next)) if (!next[k]) delete next[k];
   const derived = stageFromDates(next);
@@ -3027,7 +3057,7 @@ async function patchSheetDates(id, dates, msg, times) {
     stage: derived || '投递',
   };
   const { error } = await sb.from('applications').update(patch).eq('id', id);
-  if (error) { toast('更新失败：' + error.message, 'error'); return; }
+  if (error) { toast('更新失败：' + friendlySaveError(error), 'error'); return; }
   if (msg) toast(msg, 'success');
   await loadRecords();
   refreshListsAfterEdit();
