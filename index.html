@@ -14,8 +14,9 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261010-10" data-app>
-<link rel="stylesheet" href="style.css?v=20261010-10">
+<link rel="preload" as="script" href="app.js?v=20261010-11" data-app>
+<link rel="preload" as="script" href="vendor/supabase-js.js">
+<link rel="stylesheet" href="style.css?v=20261010-11">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -313,11 +314,14 @@
 
 <script src="config.js"></script>
 <script>
-/* Supabase SDK 加载：先 jsdelivr，失败自动换 unpkg；都失败时把 __sdkFailed 置为 true，
-   由 app.js 显示上面这张可重试的卡片（而不是 `supabase is not defined` 的白屏）。
+/* Supabase SDK 加载：先同源 vendor/supabase-js.js（随页面一起从 GitHub Pages 下发，
+   国内访问稳定、没有境外 CDN 的等待），失败再按 jsdelivr → unpkg 兜底。
+   都失败时把 __sdkFailed 置为 true，由 app.js 显示上面这张可重试的卡片
+   （而不是 `supabase is not defined` 的白屏）。
    主脚本 app.js 也走同一条链：SDK 就绪后再插入，避免它先跑起来去用还不存在的 supabase。 */
 (function () {
   var SOURCES = [
+    'vendor/supabase-js.js',
     'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
     'https://unpkg.com/@supabase/supabase-js@2'
   ];

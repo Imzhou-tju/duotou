@@ -799,22 +799,64 @@ function friendlySaveError(e) {
 // 列表三态：拉取中 / 成功（可能为空） / 失败。区分开，避免网络错误时被误读成「你还没有记录」
 let loadState = 'idle';        // 'idle' | 'loading' | 'ok' | 'error'
 let loadErrorMessage = '';
+// ---------- 记录本地缓存（秒开 + 后台刷新） ----------
+// 每次打开都等 Supabase 往返（国内网络常见几百毫秒到数秒）。把上次拉到的列表存一份
+// 在 localStorage：进页面先用旧数据画一版（界面秒开），再去拉最新数据替换。
+// 缓存只按用户 id 分key，退出登录时清掉；写操作成功后的 loadRecords 会自然覆盖它。
+const RECORDS_CACHE_PREFIX = 'duotou-records:';
+function recordsCacheKey() { return user ? RECORDS_CACHE_PREFIX + user.id : null; }
+function readRecordsCache() {
+  const k = recordsCacheKey(); if (!k) return null;
+  try {
+    const raw = localStorage.getItem(k);
+    const arr = raw ? JSON.parse(raw) : null;
+    return Array.isArray(arr) ? arr : null;
+  } catch (e) { return null; }
+}
+function writeRecordsCache(data) {
+  const k = recordsCacheKey(); if (!k) return;
+  try { localStorage.setItem(k, JSON.stringify(data || [])); }
+  catch (e) { /* 存储满 / 隐私模式：不影响功能，只是没有秒开 */ }
+}
+function purgeRecordsCache() {
+  const k = recordsCacheKey(); if (!k) return;
+  try { localStorage.removeItem(k); } catch (e) { /* 忽略 */ }
+}
+// 数据落到 records：阶段按日期推导（历史数据里 stage 可能是旧值，以日期为准）
+function applyRecords(rows) {
+  records = (rows || []).map(r => {
+    const derived = stageFromDates(r.stage_dates);
+    if (derived) r.stage = derived;
+    return r;
+  });
+}
 async function loadRecords() {
   loadState = 'loading';
   loadErrorMessage = '';
+  // 有缓存先画一版：不进「拉取中」状态，列表直接可见
+  const cached = readRecordsCache();
+  if (cached && cached.length) {
+    applyRecords(cached);
+    loadState = 'ok';
+    renderDatalists();
+    renderFeed();
+    renderSearch();
+  }
   try {
     const { data, error } = await sb.from('applications')
       .select('*').order('update_time', { ascending: false });
     if (error) throw new Error(error.message);
-    records = (data || []).map(r => {
-      const derived = stageFromDates(r.stage_dates);
-      if (derived) r.stage = derived;
-      return r;
-    });
+    applyRecords(data || []);
     loadState = 'ok';
+    writeRecordsCache(data || []);   // 只有拉成功了才更新缓存，失败时保留旧版
   } catch (e) {
-    loadState = 'error';
-    loadErrorMessage = (e && e.message) || String(e);
+    // 有缓存就不拿网络错误吓人：界面已经有数据，下次刷新再试
+    if (!cached || !cached.length) {
+      loadState = 'error';
+      loadErrorMessage = (e && e.message) || String(e);
+    } else {
+      loadState = 'ok';
+    }
   } finally {
     renderDatalists();
   }
@@ -3531,7 +3573,7 @@ function bindEvents() {
   // 账户
   $('#btn-export').addEventListener('click', exportCSV);
   $('#btn-fix-base').addEventListener('click', normalizeAllBases);
-  $('#btn-signout').addEventListener('click', () => { purgeSignedCache(); sb.auth.signOut(); });
+  $('#btn-signout').addEventListener('click', () => { purgeSignedCache(); purgeRecordsCache(); sb.auth.signOut(); });
 
   // 安卓返回键：先关掉最上面那层覆盖（详情弹层 / 编辑页），没有覆盖层才真的离开页面。
   // 少了这条监听，覆盖层不在历史栈里时按返回会直接退出应用。
