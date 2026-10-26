@@ -14,9 +14,9 @@
 <!-- 版本号：改动 app.js / style.css 后，把下面两处 v= 的值同步改掉再提交，浏览器才会重新拉取新文件；
      不改动则命中浏览器缓存，启动最快。preload 让 app.js 与 Supabase SDK 并行下载，少一段串行等待。 -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="app.js?v=20261010-11" data-app>
+<link rel="preload" as="script" href="app.js?v=20261010-12" data-app>
 <link rel="preload" as="script" href="vendor/supabase-js.js">
-<link rel="stylesheet" href="style.css?v=20261010-11">
+<link rel="stylesheet" href="style.css?v=20261010-12">
 <script>
 /* 主题：在样式表生效前把上次的亮/暗选择写到 <html data-theme>，暗色用户才不会先闪一屏白。
    切换用事件委托挂在 document 上——顶栏、登录卡、启动卡三处按钮（.theme-toggle）都能触发，
@@ -56,6 +56,8 @@
     <input id="auth-email" type="email" placeholder="邮箱" autocomplete="email">
     <input id="auth-pass" type="password" placeholder="密码" autocomplete="current-password">
     <div id="auth-error" class="auth-error"></div>
+    <!-- 连通性探测不通过时显示：说明白是网络到不了服务器，不是密码错 -->
+    <div id="auth-net-hint" class="auth-net-hint hidden"></div>
     <button id="btn-signin" class="btn primary block">登录</button>
     <button type="button" id="btn-open-signup" class="btn-link block">还没有账号？注册一个</button>
   </div>

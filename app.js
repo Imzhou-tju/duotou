@@ -736,7 +736,12 @@ async function doInitAuth() {
     $('#btn-signin').disabled = true; $('#btn-open-signup').disabled = true; $('#btn-signup').disabled = true;
     return;
   }
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // 显式声明：会话存 localStorage、自动刷新。手机浏览器的普通模式下标明了这两项，
+    // 登录一次后续打开就不用再输（无痕模式 / 开了「阻止 Cookie」的 Safari 每次都会清，属预期）。
+    persistSession: true,
+    autoRefreshToken: true,
+  });
   const { data } = await sb.auth.getSession();
   if (data && data.session) {
     user = data.session.user;
@@ -744,10 +749,29 @@ async function doInitAuth() {
   } else {
     hideBoot();
     $('#view-auth').classList.remove('hidden');
+    // 未登录先探一下服务器通不通：手机移动网络直连 supabase.co 经常被拦，
+    // 与其等用户填完密码点登录才看到「网络异常」，不如在这里就把原因说明白
+    probeSupabase();
   }
   sb.auth.onAuthStateChange((_evt, session) => {
     if (!session && user) { user = null; records = []; location.reload(); }
   });
+}
+// 服务器连通性探测：发一个不带凭据的轻请求，能收到任何 HTTP 状态（401 也算）就说明通。
+// 只影响提示文案，不拦截登录——用户照样可以点登录（比如探测刚好超时但网络是好的）。
+async function probeSupabase() {
+  const el = $('#auth-net-hint'); if (!el) return;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    await fetch(SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/', { method: 'GET', signal: ctrl.signal });
+    clearTimeout(timer);
+    el.classList.add('hidden');
+  } catch (e) {
+    el.textContent = '当前网络连不上云服务器（手机移动网络直连 supabase.co 常被拦截）。'
+      + '可切换 WiFi、改用流量重试，或参见 README「手机端访问」部署反代后修改 config.js。';
+    el.classList.remove('hidden');
+  }
 }
 
 async function enterApp() {
@@ -3179,7 +3203,7 @@ function authErrorZh(msg) {
     ['Password should be at least', '密码至少 6 位'],
     ['Unable to validate email address', '邮箱格式不对，检查一下有没有写错'],
     ['Email address', '邮箱格式不对，检查一下有没有写错'],
-    ['Failed to fetch', '网络异常，请稍后再试'],
+    ['Failed to fetch', '连不上云服务器（当前网络可能无法访问 supabase.co）。切换 WiFi / 移动网络重试，或部署反代后改 config.js，见 README「手机端访问」'],
   ];
   for (const [k, v] of table) if (m.includes(k)) return v;
   return m;

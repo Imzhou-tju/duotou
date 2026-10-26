@@ -152,9 +152,26 @@ duotou-web/
 ├── style.css           # 样式（移动优先，720px 断点适配桌面两列）
 ├── config.js           # Supabase 配置（改成你自己的）
 ├── schema.sql          # 一键建表 + RLS 策略
+├── vendor/             # Supabase SDK（同源下发，免境外 CDN 等待）
+├── deploy/             # 部署辅助：supabase-proxy-worker.js（手机端反代，见下）
 ├── manifest.webmanifest / icon.svg   # PWA 清单与图标
 └── docs/               # 截图 + 设计文档（投递模块调研、表单改版方案、多岗位方案）
 ```
+
+## 📱 手机端访问（重要）
+
+**现象**：手机打开能进页面，但登录时报「连不上云服务器」；因为从未登录成功，每次打开都要求重新输账号密码。桌面正常。
+
+**原因**：Supabase 官方域名 `xxx.supabase.co` 在国内移动网络经常被拦（DNS 污染 / 连接重置），桌面能通通常是走了代理。这是网络链路问题，不是 App 或数据库的问题。
+
+**三种处理方式**：
+
+1. **切换网络**：手机先用 WiFi（能访问外网的那种）登录一次，之后在该网络下可正常使用；换到移动网络大概率又不通。
+2. **部署反代（推荐，一次部署长期有效）**：把 `deploy/supabase-proxy-worker.js` 部署到 Cloudflare Worker（文件头部有 5 步图文说明，免费额度 10 万次/天），然后把 `config.js` 的 `SUPABASE_URL` 改成 Worker 地址即可。anon key 不用动。
+3. **全程使用代理**：手机系统代理 / VPN 环境下直连也能用。
+
+另外注意：Safari 无痕模式、开启了「阻止所有 Cookie」或用了会清理存储的浏览器，登录态无法保留，属于预期行为，用普通模式打开即可。
+
 
 ## 🗺️ 规划中
 

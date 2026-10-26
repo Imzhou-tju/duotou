@@ -89,6 +89,13 @@ body {
 .modal-card input:focus { border-color: var(--brand); }
 .auth-error { color: var(--danger); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
 .auth-error.ok { color: var(--success); }
+/* 登录卡上的网络不通提示：说明是网络问题，别让用户反复试密码 */
+.auth-net-hint {
+  font-size: 12px; line-height: 1.6; color: var(--text2);
+  background: var(--brand-soft, rgba(43, 108, 255, .08));
+  border: 1px dashed var(--border); border-radius: 8px;
+  padding: 8px 10px; margin-bottom: 10px;
+}
 .auth-card .tip { color: var(--text3); font-size: 12px; margin-top: 16px; line-height: 1.6; }
 .btn-link {
   border: none; background: none; color: var(--brand); font-size: 14px;
